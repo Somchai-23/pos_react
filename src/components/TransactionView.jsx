@@ -1,36 +1,108 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, QrCode, ShoppingCart, Trash2, CheckCircle, Plus, ArrowDownLeft, ArrowUpRight, PauseCircle, PlayCircle, X } from 'lucide-react';
-import { Button, Input, Card } from './UIComponents';
 
-export default function TransactionView({ type, products, transactions, setTransactions, setViewState, generateDocNo, handleScanQR, heldBills, setHeldBills }) {
+// --- UI Components (รวมไว้ในไฟล์นี้เพื่อให้ทำงานได้ทันทีโดยไม่ติด Error) ---
+
+const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) => {
+  const baseStyle = "px-4 py-2.5 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 text-sm";
+  const variants = {
+    primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200 disabled:bg-blue-300 disabled:shadow-none",
+    secondary: "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 disabled:bg-gray-50",
+    danger: "bg-red-50 text-red-500 hover:bg-red-100",
+    ghost: "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+  };
+
+  return (
+    <button 
+      type={type} 
+      onClick={onClick} 
+      disabled={disabled}
+      className={`${baseStyle} ${variants[variant]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+const Input = ({ label, value, onChange, placeholder, type = "text", icon: Icon, onIconClick, readOnly, className = "", autoComplete = "off" }) => (
+  <div className={`mb-4 ${className}`}>
+    {label && <label className="block text-xs font-semibold text-gray-500 mb-2 ml-1 tracking-wide">{label}</label>}
+    <div className="relative group">
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        readOnly={readOnly}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={`w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white block p-3.5 ${Icon ? 'pr-12' : ''} placeholder-gray-400 transition-all duration-200`}
+      />
+      {Icon && (
+        <button 
+          type="button"
+          onClick={onIconClick}
+          className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-400 group-focus-within:text-blue-500 hover:text-blue-600 cursor-pointer transition-colors"
+        >
+          <Icon size={20} />
+        </button>
+      )}
+    </div>
+  </div>
+);
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-300 p-5 ${className}`}>
+    {children}
+  </div>
+);
+
+// --- Main TransactionView Component ---
+
+export default function TransactionView({ type, products, transactions, setTransactions, setViewState, generateDocNo, handleScanQR, heldBills = [], setHeldBills }) {
     const [selectedProduct, setSelectedProduct] = useState('');
     const [qty, setQty] = useState(1);
     const [price, setPrice] = useState(0);
     const [cart, setCart] = useState([]);
     const [cartNote, setCartNote] = useState('');
-    const [showHeldBills, setShowHeldBills] = useState(false); // State สำหรับเปิด/ปิดหน้าต่างรายการพักบิล
+    const [showHeldBills, setShowHeldBills] = useState(false); 
 
-    // Reset when switching tabs
     useEffect(() => {
         setCart([]);
         setCartNote('');
         setViewState('list');
     }, [type, setViewState]);
 
+    // ฟังก์ชันคำนวณสต็อกคงเหลือ (สำหรับตรวจสอบก่อนขาย)
+    const getCurrentStock = (productId) => {
+        const incoming = transactions.filter(t => t.type === 'IN').flatMap(t => t.items).filter(i => i.productId === productId).reduce((sum, i) => sum + Number(i.qty), 0);
+        const outgoing = transactions.filter(t => t.type === 'OUT').flatMap(t => t.items).filter(i => i.productId === productId).reduce((sum, i) => sum + Number(i.qty), 0);
+        return incoming - outgoing;
+    };
+
     const addToCart = () => {
       const product = products.find(p => p.id === Number(selectedProduct));
       if (!product) return;
       
+      // Validation: เช็คสต็อกก่อนขาย
+      if (type === 'OUT') {
+          const currentStock = getCurrentStock(product.id);
+          const itemInCart = cart.find(i => i.productId === product.id);
+          const currentQtyInCart = itemInCart ? itemInCart.qty : 0;
+          
+          if (currentQtyInCart + Number(qty) > currentStock) {
+              alert(`สินค้าคงเหลือไม่พอ! (มี: ${currentStock}, ในตะกร้า: ${currentQtyInCart}, จะเพิ่ม: ${qty})`);
+              return;
+          }
+      }
+
       const existingItemIndex = cart.findIndex(item => item.productId === product.id);
       
       if (existingItemIndex > -1) {
-          // ถ้ามีสินค้านี้อยู่แล้ว ให้บวกเพิ่ม
           const newCart = [...cart];
           newCart[existingItemIndex].qty += Number(qty);
           newCart[existingItemIndex].total = newCart[existingItemIndex].qty * newCart[existingItemIndex].price;
           setCart(newCart);
       } else {
-          // ถ้ายังไม่มี ให้เพิ่มใหม่
           setCart([...cart, {
             productId: product.id,
             name: product.name,
@@ -64,7 +136,6 @@ export default function TransactionView({ type, products, transactions, setTrans
         });
     }
 
-    // --- ฟังก์ชันจัดการพักบิล ---
     const handleHoldBill = () => {
         if (cart.length === 0) return alert('ไม่มีรายการสินค้าให้พักบิล');
         
@@ -77,31 +148,41 @@ export default function TransactionView({ type, products, transactions, setTrans
             type: type
         };
 
-        setHeldBills([...heldBills, billData]);
-        setCart([]);
-        setCartNote('');
-        alert('พักบิลเรียบร้อยแล้ว');
+        if (setHeldBills) {
+            setHeldBills([...heldBills, billData]);
+            setCart([]);
+            setCartNote('');
+            alert('พักบิลเรียบร้อยแล้ว สามารถทำรายการต่อไปได้เลย');
+        }
     };
 
     const handleRestoreBill = (bill) => {
         if (cart.length > 0) {
-            if(!window.confirm('รายการปัจจุบันจะถูกล้าง ต้องการทำต่อหรือไม่?')) return;
+            if(!window.confirm('มีรายการสินค้าค้างอยู่ในตะกร้า ต้องการทับด้วยรายการที่พักไว้หรือไม่?')) return;
         }
         
+        // เช็คสต็อกอีกครั้งตอนเรียกคืน (เผื่อขายไปแล้วระหว่างนั้น)
+        if (type === 'OUT') {
+            for (const item of bill.items) {
+                const currentStock = getCurrentStock(item.productId);
+                if (item.qty > currentStock) {
+                    alert(`ไม่สามารถเรียกคืนบิลได้ เนื่องจากสินค้า "${item.name}" คงเหลือไม่พอ (เหลือ ${currentStock})`);
+                    return;
+                }
+            }
+        }
+
         setCart(bill.items);
         setCartNote(bill.note);
-        
-        // ลบบิลที่เรียกคืนออกจากรายการพัก
         setHeldBills(heldBills.filter(b => b.id !== bill.id));
         setShowHeldBills(false);
     };
 
     const handleDeleteHeldBill = (billId) => {
-        if(window.confirm('ต้องการลบบิลนี้ทิ้งใช่หรือไม่?')) {
+        if(window.confirm('ต้องการลบบิลที่พักไว้นี้ทิ้งใช่หรือไม่?')) {
             setHeldBills(heldBills.filter(b => b.id !== billId));
         }
     };
-    // ---------------------------
 
     const saveTransaction = () => {
       if (cart.length === 0) return;
@@ -121,7 +202,10 @@ export default function TransactionView({ type, products, transactions, setTrans
     };
 
     const grandTotal = cart.reduce((sum, item) => sum + item.total, 0);
-    const currentHeldBills = heldBills.filter(b => b.type === type); // กรองเฉพาะบิลประเภทเดียวกัน (ขาย/ซื้อ)
+    const currentHeldBills = heldBills.filter(b => b.type === type);
+
+    // คำนวณสต็อกของสินค้าที่เลือกอยู่ (เพื่อแสดงผล)
+    const selectedProductStock = selectedProduct ? getCurrentStock(Number(selectedProduct)) : 0;
 
     return (
       <div className="p-4 md:p-8 h-full flex flex-col max-w-4xl mx-auto relative pb-24">
@@ -137,7 +221,6 @@ export default function TransactionView({ type, products, transactions, setTrans
                 </div>
             </div>
             
-            {/* ปุ่มดูรายการพักบิล */}
             {currentHeldBills.length > 0 && (
                 <button 
                     onClick={() => setShowHeldBills(true)}
@@ -149,7 +232,6 @@ export default function TransactionView({ type, products, transactions, setTrans
             )}
         </div>
 
-        {/* Product Selection Card */}
         <Card className="mb-6 !p-6 border-blue-100 shadow-md">
           <div className="flex gap-3 mb-4">
              <div className="relative flex-1">
@@ -174,6 +256,13 @@ export default function TransactionView({ type, products, transactions, setTrans
           
           {selectedProduct && (
             <div className="animate-in fade-in slide-in-from-top-2">
+                {type === 'OUT' && (
+                    <div className="mb-2 text-right">
+                       <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedProductStock > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                           คงเหลือ: {selectedProductStock} ชิ้น
+                       </span>
+                    </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <Input 
                         label="ราคาต่อหน่วย" 
@@ -188,7 +277,7 @@ export default function TransactionView({ type, products, transactions, setTrans
                         onChange={e => setQty(e.target.value)}
                     />
                 </div>
-               <Button onClick={addToCart} className="w-full py-3">
+               <Button onClick={addToCart} className="w-full py-3" disabled={type === 'OUT' && selectedProductStock <= 0}>
                    <Plus size={18} /> เพิ่มรายการ
                </Button>
             </div>
@@ -244,7 +333,7 @@ export default function TransactionView({ type, products, transactions, setTrans
                </div>
                
                <div className="grid grid-cols-4 gap-3">
-                   {/* ปุ่มพักบิล */}
+                   {/* ปุ่มพักบิล (ใหม่) */}
                    <Button 
                      variant="secondary"
                      className="col-span-1 py-4 text-amber-600 border-amber-200 bg-amber-50 hover:bg-amber-100" 
@@ -266,7 +355,7 @@ export default function TransactionView({ type, products, transactions, setTrans
            </div>
         </div>
 
-        {/* Modal แสดงรายการพักบิล */}
+        {/* Modal แสดงรายการพักบิล (Popup) */}
         {showHeldBills && (
             <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-in fade-in duration-200">
                 <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl max-h-[80vh] flex flex-col">
@@ -292,7 +381,7 @@ export default function TransactionView({ type, products, transactions, setTrans
                                         <span className="font-bold text-blue-600">฿{bill.totalAmount.toLocaleString()}</span>
                                     </div>
                                     <div className="text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded-lg">
-                                        {bill.items.map(i => i.name).join(', ').substring(0, 50)}...
+                                        {bill.items.map(i => `${i.name} (x${i.qty})`).join(', ').substring(0, 50)}...
                                     </div>
                                     <div className="flex gap-2">
                                         <button 
@@ -318,4 +407,4 @@ export default function TransactionView({ type, products, transactions, setTrans
 
       </div>
     );
-};
+}
