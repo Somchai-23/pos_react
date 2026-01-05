@@ -1,14 +1,13 @@
 import React, { useState, useCallback } from 'react';
 
-// Import Components จากโฟลเดอร์ components ที่เราแยกไว้
+// Import Components จากโฟลเดอร์ components
 import ProductView from './components/ProductView';
 import TransactionView from './components/TransactionView';
 import ReportView from './components/ReportView';
 import BottomNavigation from './components/BottomNavigation';
-import ScannerModal from './components/ScannerModal'; // เรียกใช้ตัวสแกนที่เราเพิ่งสร้าง
+import ScannerModal from './components/ScannerModal'; 
 
 export default function POSStockApp() {
-  // State หลัก
   const [activeTab, setActiveTab] = useState('products');
   
   // ข้อมูลสินค้า (Mock Data)
@@ -19,26 +18,30 @@ export default function POSStockApp() {
   ]);
   
   const [transactions, setTransactions] = useState([]);
+  const [heldBills, setHeldBills] = useState([]); // [New] ตัวแปรเก็บรายการพักบิล
   const [viewState, setViewState] = useState('list');
   
-  // --- ส่วนจัดการ Scanner (ของจริง) ---
+  // --- ส่วนจัดการ Scanner ---
   const [showScanner, setShowScanner] = useState(false);
-  const [scanCallback, setScanCallback] = useState(null); // เก็บฟังก์ชันปลายทางที่จะรับค่าบาร์โค้ด
+  const [scanCallback, setScanCallback] = useState(null); 
 
-  // ฟังก์ชันนี้จะถูกส่งไปให้หน้า ProductView และ TransactionView ใช้
   const handleScanQR = (callback) => {
-    setScanCallback(() => callback); // เก็บ callback ไว้
-    setShowScanner(true);            // สั่งเปิด ScannerModal
+    setScanCallback(() => callback); 
+    setShowScanner(true);            
   };
 
-  // เมื่อ ScannerModal อ่านค่าเสร็จ จะส่งค่ากลับมาที่นี่
   const handleScanSuccess = (decodedText) => {
     if (scanCallback) {
-        scanCallback(decodedText); // ส่งเลขบาร์โค้ดกลับไปให้ช่อง Input
+        scanCallback(decodedText); 
     }
-    // (สามารถเพิ่มเสียง Beep ตรงนี้ได้ถ้าต้องการ)
   };
-  // ------------------------------------
+  // -------------------------
+
+  const handleDeleteProduct = (productId) => {
+    if (window.confirm('คุณแน่ใจหรือไม่ที่จะลบสินค้านี้?')) {
+        setProducts(products.filter(p => p.id !== productId));
+    }
+  };
 
   const generateDocNo = (type) => {
     const prefix = type === 'IN' ? 'PO' : 'INV';
@@ -50,7 +53,7 @@ export default function POSStockApp() {
   const calculateStock = useCallback((productId) => {
     const incoming = transactions.filter(t => t.type === 'IN').flatMap(t => t.items).filter(i => i.productId === productId).reduce((sum, i) => sum + Number(i.qty), 0);
     const outgoing = transactions.filter(t => t.type === 'OUT').flatMap(t => t.items).filter(i => i.productId === productId).reduce((sum, i) => sum + Number(i.qty), 0);
-    return 50 + incoming - outgoing;
+    return 0 + incoming - outgoing;
   }, [transactions]);
 
   return (
@@ -66,7 +69,8 @@ export default function POSStockApp() {
                   viewState={viewState} 
                   setViewState={setViewState} 
                   calculateStock={calculateStock} 
-                  handleScanQR={handleScanQR} // ส่งฟังก์ชันเปิดกล้องไปให้ใช้
+                  handleScanQR={handleScanQR} 
+                  handleDeleteProduct={handleDeleteProduct}
                 />
             )}
             {activeTab === 'sell' && (
@@ -77,7 +81,9 @@ export default function POSStockApp() {
                   setTransactions={setTransactions} 
                   setViewState={setViewState} 
                   generateDocNo={generateDocNo} 
-                  handleScanQR={handleScanQR} // ส่งฟังก์ชันเปิดกล้องไปให้ใช้
+                  handleScanQR={handleScanQR}
+                  heldBills={heldBills}        // ส่งรายการพักบิลลงไป
+                  setHeldBills={setHeldBills}  // ส่งฟังก์ชันอัปเดตลงไป
                 />
             )}
             {activeTab === 'buy' && (
@@ -88,7 +94,9 @@ export default function POSStockApp() {
                   setTransactions={setTransactions} 
                   setViewState={setViewState} 
                   generateDocNo={generateDocNo} 
-                  handleScanQR={handleScanQR} // ส่งฟังก์ชันเปิดกล้องไปให้ใช้
+                  handleScanQR={handleScanQR} 
+                  heldBills={heldBills} 
+                  setHeldBills={setHeldBills}
                 />
             )}
             {activeTab === 'reports' && (
@@ -100,10 +108,8 @@ export default function POSStockApp() {
             )}
         </main>
 
-        {/* Bottom Navigation */}
         <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
         
-        {/* Scanner Modal (ของจริง) */}
         <ScannerModal 
             isOpen={showScanner} 
             onClose={() => setShowScanner(false)} 

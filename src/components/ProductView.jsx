@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Search, QrCode, ChevronRight, Save } from 'lucide-react';
-import { Button, Input, Card, ImageUpload } from './UIComponents'; // เรียกใช้ ImageUpload
+import { Plus, Search, QrCode, ChevronRight, Save, Trash2 } from 'lucide-react'; // Import Trash2 (รูปถังขยะ)
+import { Button, Input, Card, ImageUpload } from './UIComponents';
 
-export default function ProductView({ products, setProducts, viewState, setViewState, calculateStock, handleScanQR }) {
+export default function ProductView({ products, setProducts, viewState, setViewState, calculateStock, handleScanQR, handleDeleteProduct }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [tempProduct, setTempProduct] = useState({});
 
@@ -22,7 +22,6 @@ export default function ProductView({ products, setProducts, viewState, setViewS
       setViewState('list');
     };
 
-    // ฟังก์ชันช่วยแสดงรูปในรายการสินค้า (List Item)
     const renderProductImage = (img) => {
         if (img && img.startsWith('data:')) {
             return <img src={img} alt="Product" className="w-full h-full object-cover" />;
@@ -41,12 +40,10 @@ export default function ProductView({ products, setProducts, viewState, setViewS
           </div>
 
           <Card>
-            {/* --- ส่วนอัปโหลดรูปภาพ (แก้ไขใหม่) --- */}
             <ImageUpload 
                 value={tempProduct.img} 
                 onChange={(newImg) => setTempProduct({ ...tempProduct, img: newImg })}
             />
-            {/* ---------------------------------- */}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="col-span-full">
@@ -136,14 +133,17 @@ export default function ProductView({ products, setProducts, viewState, setViewS
               <div 
                 key={p.id} 
                 onClick={() => { setTempProduct(p); setViewState('form'); }}
-                className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group"
+                className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group relative"
               >
+                {/* รูปสินค้า */}
                 <div className="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200 overflow-hidden border border-gray-100">
                   {renderProductImage(p.img)}
                 </div>
+                
+                {/* ข้อมูลสินค้า */}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-semibold text-gray-900 truncate pr-2 text-base">{p.name}</h3>
+                    <h3 className="font-semibold text-gray-900 truncate pr-8 text-base">{p.name}</h3>
                     <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${isLowStock ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
                       {currentStock} {p.unit}
                     </span>
@@ -153,6 +153,18 @@ export default function ProductView({ products, setProducts, viewState, setViewS
                     <span className="font-bold text-gray-900">฿{p.sellPrice.toLocaleString()}</span>
                   </div>
                 </div>
+
+                {/* ปุ่มลบ (จะแสดงเมื่อเอาเมาส์ชี้ หรือบนมือถืออาจต้องปรับให้แสดงตลอดถ้าต้องการ) */}
+                <button 
+                    onClick={(e) => {
+                        e.stopPropagation(); // ป้องกันไม่ให้กดแล้วเข้าไปหน้าแก้ไข
+                        handleDeleteProduct(p.id);
+                    }}
+                    className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10 border border-gray-100 opacity-0 group-hover:opacity-100"
+                    title="ลบสินค้า"
+                >
+                    <Trash2 size={16} />
+                </button>
               </div>
             );
           })}

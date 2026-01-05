@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, QrCode, ShoppingCart, Trash2, CheckCircle, Plus, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { ChevronRight, QrCode, ShoppingCart, Trash2, CheckCircle, Plus, ArrowDownLeft, ArrowUpRight, PauseCircle, PlayCircle, X } from 'lucide-react';
 import { Button, Input, Card } from './UIComponents';
 
-export default function TransactionView({ type, products, transactions, setTransactions, setViewState, generateDocNo, handleScanQR }) {
+export default function TransactionView({ type, products, transactions, setTransactions, setViewState, generateDocNo, handleScanQR, heldBills, setHeldBills }) {
     const [selectedProduct, setSelectedProduct] = useState('');
     const [qty, setQty] = useState(1);
     const [price, setPrice] = useState(0);
     const [cart, setCart] = useState([]);
     const [cartNote, setCartNote] = useState('');
+    const [showHeldBills, setShowHeldBills] = useState(false); // State สำหรับเปิด/ปิดหน้าต่างรายการพักบิล
 
+    // Reset when switching tabs
     useEffect(() => {
         setCart([]);
         setCartNote('');
@@ -19,13 +21,24 @@ export default function TransactionView({ type, products, transactions, setTrans
       const product = products.find(p => p.id === Number(selectedProduct));
       if (!product) return;
       
-      setCart([...cart, {
-        productId: product.id,
-        name: product.name,
-        qty: Number(qty),
-        price: Number(price),
-        total: Number(qty) * Number(price)
-      }]);
+      const existingItemIndex = cart.findIndex(item => item.productId === product.id);
+      
+      if (existingItemIndex > -1) {
+          // ถ้ามีสินค้านี้อยู่แล้ว ให้บวกเพิ่ม
+          const newCart = [...cart];
+          newCart[existingItemIndex].qty += Number(qty);
+          newCart[existingItemIndex].total = newCart[existingItemIndex].qty * newCart[existingItemIndex].price;
+          setCart(newCart);
+      } else {
+          // ถ้ายังไม่มี ให้เพิ่มใหม่
+          setCart([...cart, {
+            productId: product.id,
+            name: product.name,
+            qty: Number(qty),
+            price: Number(price),
+            total: Number(qty) * Number(price)
+          }]);
+      }
       
       setQty(1);
     };
@@ -51,6 +64,45 @@ export default function TransactionView({ type, products, transactions, setTrans
         });
     }
 
+    // --- ฟังก์ชันจัดการพักบิล ---
+    const handleHoldBill = () => {
+        if (cart.length === 0) return alert('ไม่มีรายการสินค้าให้พักบิล');
+        
+        const billData = {
+            id: Date.now(),
+            items: cart,
+            totalAmount: cart.reduce((sum, item) => sum + item.total, 0),
+            note: cartNote || `บิลเวลา ${new Date().toLocaleTimeString('th-TH')}`,
+            date: new Date().toISOString(),
+            type: type
+        };
+
+        setHeldBills([...heldBills, billData]);
+        setCart([]);
+        setCartNote('');
+        alert('พักบิลเรียบร้อยแล้ว');
+    };
+
+    const handleRestoreBill = (bill) => {
+        if (cart.length > 0) {
+            if(!window.confirm('รายการปัจจุบันจะถูกล้าง ต้องการทำต่อหรือไม่?')) return;
+        }
+        
+        setCart(bill.items);
+        setCartNote(bill.note);
+        
+        // ลบบิลที่เรียกคืนออกจากรายการพัก
+        setHeldBills(heldBills.filter(b => b.id !== bill.id));
+        setShowHeldBills(false);
+    };
+
+    const handleDeleteHeldBill = (billId) => {
+        if(window.confirm('ต้องการลบบิลนี้ทิ้งใช่หรือไม่?')) {
+            setHeldBills(heldBills.filter(b => b.id !== billId));
+        }
+    };
+    // ---------------------------
+
     const saveTransaction = () => {
       if (cart.length === 0) return;
       const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
@@ -69,19 +121,35 @@ export default function TransactionView({ type, products, transactions, setTrans
     };
 
     const grandTotal = cart.reduce((sum, item) => sum + item.total, 0);
+    const currentHeldBills = heldBills.filter(b => b.type === type); // กรองเฉพาะบิลประเภทเดียวกัน (ขาย/ซื้อ)
 
     return (
       <div className="p-4 md:p-8 h-full flex flex-col max-w-4xl mx-auto relative pb-24">
-        <div className="flex items-center gap-3 mb-6">
-            <div className={`p-3 rounded-2xl ${type === 'IN' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-                {type === 'IN' ? <ArrowDownLeft size={28} /> : <ArrowUpRight size={28} />}
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-2xl ${type === 'IN' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
+                    {type === 'IN' ? <ArrowDownLeft size={28} /> : <ArrowUpRight size={28} />}
+                </div>
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">{type === 'IN' ? 'รับเข้า' : 'ขายสินค้า'}</h1>
+                    <p className="text-gray-500 text-sm">{generateDocNo(type)}</p>
+                </div>
             </div>
-            <div>
-                <h1 className="text-2xl font-bold text-gray-900">{type === 'IN' ? 'รับสินค้าเข้าสต็อก' : 'สร้างรายการขาย'}</h1>
-                <p className="text-gray-500 text-sm">สร้างบิล{type === 'IN' ? 'ซื้อ' : 'ขาย'}ใหม่</p>
-            </div>
+            
+            {/* ปุ่มดูรายการพักบิล */}
+            {currentHeldBills.length > 0 && (
+                <button 
+                    onClick={() => setShowHeldBills(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-amber-100 text-amber-700 rounded-xl font-medium text-sm hover:bg-amber-200 transition-colors animate-pulse"
+                >
+                    <PauseCircle size={18} />
+                    <span>พักไว้ {currentHeldBills.length}</span>
+                </button>
+            )}
         </div>
 
+        {/* Product Selection Card */}
         <Card className="mb-6 !p-6 border-blue-100 shadow-md">
           <div className="flex gap-3 mb-4">
              <div className="relative flex-1">
@@ -158,7 +226,7 @@ export default function TransactionView({ type, products, transactions, setTrans
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer Actions */}
         <div className="bg-white border-t border-gray-100 p-6 -mx-4 md:-mx-8 -mb-8 mt-auto rounded-t-3xl shadow-[0_-8px_20px_-5px_rgba(0,0,0,0.1)] z-10">
            <div className="max-w-4xl mx-auto">
                <Input 
@@ -174,15 +242,80 @@ export default function TransactionView({ type, products, transactions, setTrans
                   </div>
                   <span className="text-3xl font-bold text-blue-600 tracking-tight">฿{grandTotal.toLocaleString()}</span>
                </div>
-               <Button 
-                 className="w-full py-4 text-lg font-bold shadow-blue-300 shadow-xl" 
-                 onClick={saveTransaction}
-                 disabled={cart.length === 0}
-                >
-                 <CheckCircle className="mr-2" /> {type === 'IN' ? 'ยืนยันการสั่งซื้อ' : 'ยืนยันการขาย'}
-               </Button>
+               
+               <div className="grid grid-cols-4 gap-3">
+                   {/* ปุ่มพักบิล */}
+                   <Button 
+                     variant="secondary"
+                     className="col-span-1 py-4 text-amber-600 border-amber-200 bg-amber-50 hover:bg-amber-100" 
+                     onClick={handleHoldBill}
+                     disabled={cart.length === 0}
+                   >
+                     <PauseCircle size={20} /> <span className="hidden sm:inline">พักบิล</span>
+                   </Button>
+
+                   {/* ปุ่มยืนยัน */}
+                   <Button 
+                     className="col-span-3 py-4 text-lg font-bold shadow-blue-300 shadow-xl" 
+                     onClick={saveTransaction}
+                     disabled={cart.length === 0}
+                    >
+                     <CheckCircle className="mr-2" /> {type === 'IN' ? 'ยืนยันการซื้อ' : 'รับเงิน'}
+                   </Button>
+               </div>
            </div>
         </div>
+
+        {/* Modal แสดงรายการพักบิล */}
+        {showHeldBills && (
+            <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-in fade-in duration-200">
+                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl max-h-[80vh] flex flex-col">
+                    <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                        <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+                            <PauseCircle className="text-amber-500" /> รายการที่พักไว้
+                        </h3>
+                        <button onClick={() => setShowHeldBills(false)} className="p-2 hover:bg-gray-200 rounded-full">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                        {currentHeldBills.length === 0 ? (
+                            <p className="text-center text-gray-400 py-8">ไม่มีรายการที่พักไว้</p>
+                        ) : (
+                            currentHeldBills.map(bill => (
+                                <div key={bill.id} className="border border-gray-200 rounded-xl p-3 hover:border-blue-300 transition-colors bg-white shadow-sm">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <p className="font-bold text-gray-800">{bill.note || 'ไม่มีหมายเหตุ'}</p>
+                                            <p className="text-xs text-gray-500">{new Date(bill.date).toLocaleTimeString('th-TH')}</p>
+                                        </div>
+                                        <span className="font-bold text-blue-600">฿{bill.totalAmount.toLocaleString()}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mb-3 bg-gray-50 p-2 rounded-lg">
+                                        {bill.items.map(i => i.name).join(', ').substring(0, 50)}...
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => handleRestoreBill(bill)}
+                                            className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center justify-center gap-2"
+                                        >
+                                            <PlayCircle size={16} /> ทำรายการต่อ
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDeleteHeldBill(bill.id)}
+                                            className="px-3 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
       </div>
     );
 };
