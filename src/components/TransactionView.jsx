@@ -22,31 +22,17 @@ export default function TransactionView({ type, products, generateDocNo, handleS
     const grandTotal = cart.reduce((sum, item) => sum + item.total, 0);
     const earnedPoints = currentMember && type === 'OUT' ? Math.floor((grandTotal - pointsToUse) / memberSettings.bahtPerPoint) : 0;
 
-    // --- ฟังก์ชันพักบิล (จะทำงานเฉพาะหน้าขายสินค้า) ---
+    // --- ฟังก์ชันจัดการบิล (พักบิล/เรียกคืน) ---
     const handleHoldBill = () => {
-        if (type !== 'OUT') return; // ป้องกันการเรียกใช้ผิดหน้า
+        if (type !== 'OUT') return;
         if (cart.length === 0) return alert('⚠️ ไม่มีสินค้าให้พักครับ');
-        
-        const newHeldBill = {
-            id: Date.now(),
-            items: [...cart],
-            note: cartNote,
-            total: grandTotal,
-            time: new Date().toLocaleTimeString('th-TH'),
-            member: currentMember
-        };
-
-        setHeldBills([...heldBills, newHeldBill]);
-        setCart([]); setCartNote(''); setCurrentMember(null);
-        alert('📍 พักบิลนี้ไว้แล้ว');
+        setHeldBills([...heldBills, { id: Date.now(), items: [...cart], note: cartNote, total: grandTotal, time: new Date().toLocaleTimeString('th-TH'), member: currentMember }]);
+        setCart([]); setCartNote(''); setCurrentMember(null); setMemberPhone('');
     };
 
     const handleRecallBill = (heldBill) => {
         if (cart.length > 0 && !window.confirm('ต้องการแทนที่ตะกร้าด้วยบิลที่พักไว้ใช่ไหม?')) return;
-        setCart(heldBill.items);
-        setCartNote(heldBill.note || '');
-        setCurrentMember(heldBill.member || null);
-        setHeldBills(heldBills.filter(b => b.id !== heldBill.id));
+        setCart(heldBill.items); setCartNote(heldBill.note || ''); setCurrentMember(heldBill.member || null); setHeldBills(heldBills.filter(b => b.id !== heldBill.id));
     };
 
     const addToCart = () => {
@@ -78,9 +64,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
             }
             setCart([]); setCartNote(''); setCurrentDocNo(generateDocNo(type)); setCurrentMember(null); setPointsToUse(0); setMemberPhone(''); 
             alert('✅ บันทึกรายการเรียบร้อย');
-        } catch (error) {
-            alert('❌ ข้อผิดพลาด: ' + error.message);
-        }
+        } catch (error) { alert('❌ ข้อผิดพลาด: ' + error.message); }
     };
 
     return (
@@ -89,34 +73,24 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                 <div className="w-full lg:w-[60%] space-y-6">
                     <div className="flex justify-between items-center">
                         <div>
-                            <h1 className="text-3xl font-black text-slate-800 tracking-tight">
-                                {type === 'OUT' ? 'ขายสินค้า (Cloud)' : 'รับสต็อกเข้า'}
-                            </h1>
-                            {/* แสดงจำนวนบิลค้างเฉพาะหน้าขายสินค้า */}
-                            {type === 'OUT' && heldBills.length > 0 && (
-                                <p className="text-orange-500 text-xs font-bold animate-pulse mt-1">● มีบิลค้างอยู่ {heldBills.length} รายการ</p>
-                            )}
+                            <h1 className="text-3xl font-black text-slate-800 tracking-tight">{type === 'OUT' ? 'ขายสินค้า (Cloud)' : 'รับสต็อกเข้า'}</h1>
+                            {type === 'OUT' && heldBills.length > 0 && <p className="text-orange-500 text-xs font-bold animate-pulse mt-1">● มีบิลค้างอยู่ {heldBills.length} รายการ</p>}
                         </div>
                         <span className="font-mono text-[10px] bg-white border border-slate-200 px-3 py-1 rounded-full text-slate-400 font-bold">{currentDocNo}</span>
                     </div>
 
-                    {/* แสดงรายการบิลที่พักไว้เฉพาะหน้าขายสินค้า */}
                     {type === 'OUT' && heldBills.length > 0 && (
                         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                             {heldBills.map(bill => (
                                 <button key={bill.id} onClick={() => handleRecallBill(bill)} className="flex items-center gap-2 bg-orange-50 border border-orange-100 px-4 py-2 rounded-xl shrink-0 hover:bg-orange-100 transition-all">
                                     <PlayCircle size={16} className="text-orange-500" />
-                                    <div className="text-left">
-                                        <p className="text-[10px] font-black text-orange-600 uppercase">พักเมื่อ {bill.time}</p>
-                                        <p className="text-xs font-bold text-slate-700">฿{bill.total.toLocaleString()}</p>
-                                    </div>
+                                    <div className="text-left"><p className="text-[10px] font-black text-orange-600 uppercase">พักเมื่อ {bill.time}</p><p className="text-xs font-bold text-slate-700">฿{bill.total.toLocaleString()}</p></div>
                                 </button>
                             ))}
                         </div>
                     )}
 
                     <Card className="!p-6 border-none shadow-sm">
-                        {/* ส่วนเลือกสินค้าเหมือนเดิม */}
                         <div className="flex gap-2 mb-4">
                             <select className="flex-1 bg-slate-50 border-2 border-slate-50 rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-blue-50 transition-all outline-none" value={selectedProduct} onChange={(e) => {
                                 const pid = e.target.value; setSelectedProduct(pid);
@@ -142,6 +116,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <Input label="ราคา/หน่วย" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
+                                    {/* ป้องกันเลขติดลบ: Math.max(1, ...) */}
                                     <Input label="จำนวน" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
                                     <Button onClick={addToCart} className="col-span-full py-4 text-base font-black shadow-lg shadow-blue-100"><Plus size={18}/> เพิ่มลงรายการ</Button>
                                 </div>
@@ -149,28 +124,46 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                         )}
                     </Card>
 
-                    {/* ส่วนหมายเหตุ */}
+                    {/* --- แก้ไข: แสดงระบบค้นหาสมาชิกเฉพาะหน้าขาย (type === 'OUT') --- */}
+                    {type === 'OUT' && (
+                        <Card className="bg-blue-600 !p-6 border-none text-white shadow-xl shadow-blue-200/50">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Users size={16} className="text-blue-100" />
+                                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100 font-black">All-Member Cloud Search</h3>
+                            </div>
+                            <div className="flex gap-2 mb-4">
+                                <input placeholder="ใส่เบอร์โทรศัพท์สมาชิก..." value={memberPhone} onChange={e => setMemberPhone(e.target.value)} className="flex-1 bg-white text-slate-900 border-none rounded-2xl p-4 placeholder:text-slate-400 outline-none focus:ring-4 focus:ring-blue-400 transition-all font-bold shadow-inner" />
+                                <button onClick={() => { const m = customers.find(c => c.phone === memberPhone); if(m) setCurrentMember(m); else alert('❌ ไม่พบสมาชิกบน Cloud'); }} className="bg-slate-900 text-white px-6 rounded-2xl font-black hover:bg-black active:scale-95 shadow-lg"><Search size={20}/></button>
+                            </div>
+                            {currentMember && (
+                                <div className="flex justify-between items-center animate-in zoom-in-95 p-4 bg-white rounded-2xl shadow-inner border border-blue-400 text-slate-800">
+                                    <div className="min-w-0">
+                                        <p className="font-black text-sm truncate">{currentMember.name}</p>
+                                        <p className="text-[10px] font-bold text-blue-600 italic">แต้มคงเหลือ: {(currentMember.points || 0).toLocaleString()}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">ใช้แต้มลดเงิน (฿)</span>
+                                        <input type="number" className="w-20 bg-slate-100 text-slate-900 border-none rounded-lg p-1.5 text-center font-black focus:ring-2 focus:ring-blue-400" value={pointsToUse} onChange={e => setPointsToUse(Math.max(0, Math.min(currentMember.points, Math.min(grandTotal, Number(e.target.value)))))} />
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    )}
+
                     <Card className="!p-5 border-2 border-dashed border-slate-200 bg-white shadow-none">
-                        <div className="flex items-center gap-2 mb-3 text-slate-400">
-                            <MessageSquare size={16} />
-                            <span className="text-[10px] font-black uppercase tracking-widest">หมายเหตุ</span>
-                        </div>
+                        <div className="flex items-center gap-2 mb-3 text-slate-400"><MessageSquare size={16} /><span className="text-[10px] font-black uppercase tracking-widest font-black">หมายเหตุบันทึกบิล</span></div>
                         <textarea className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm text-slate-700 focus:ring-4 focus:ring-slate-100 min-h-[80px] outline-none transition-all" placeholder="รายละเอียดเพิ่มเติม..." value={cartNote} onChange={(e) => setCartNote(e.target.value)} />
                     </Card>
                 </div>
 
                 <aside className="hidden lg:flex w-[40%] bg-white border border-slate-100 rounded-[2.5rem] flex-col h-[calc(100vh-140px)] sticky top-8 shadow-sm overflow-hidden">
                     <div className="p-6 border-b bg-slate-50/50 flex items-center justify-between">
-                        <h3 className="font-black text-slate-800 flex items-center gap-2 text-sm uppercase tracking-tight"><ShoppingCart size={18}/> Cart Summary</h3>
+                        <h3 className="font-black text-slate-800 flex items-center gap-2 text-sm uppercase tracking-tight font-black"><ShoppingCart size={18}/> Cart Summary</h3>
                         <span className="bg-slate-900 text-white text-[10px] px-3 py-1 rounded-full font-black">{cart.length}</span>
                     </div>
-                    
                     <div className="flex-1 overflow-y-auto p-6 space-y-4">
                         {cart.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-200">
-                                <ShoppingCart size={64} strokeWidth={1} className="mb-4 opacity-20" />
-                                <p className="text-[10px] font-black text-slate-300">ไม่มีสินค้าในตะกร้า</p>
-                            </div>
+                            <div className="h-full flex flex-col items-center justify-center text-slate-200"><ShoppingCart size={64} strokeWidth={1} className="mb-4 opacity-20" /><p className="text-[10px] font-black text-slate-300">ไม่มีสินค้าในตะกร้า</p></div>
                         ) : (
                             cart.map((item, idx) => (
                                 <div key={idx} className="flex justify-between items-center group animate-in fade-in">
@@ -183,23 +176,21 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                             ))
                         )}
                     </div>
-
                     <div className="p-8 bg-slate-50 border-t space-y-5">
                         <div className={`grid ${type === 'OUT' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
-                            {/* ปุ่มพักบิล: จะแสดงเฉพาะหน้าขายสินค้า (OUT) */}
                             {type === 'OUT' && (
                                 <button onClick={handleHoldBill} disabled={cart.length === 0} className="flex items-center justify-center gap-2 py-4 bg-white border-2 border-slate-200 text-slate-600 rounded-2xl font-black text-sm hover:bg-slate-50 transition-all disabled:opacity-50">
                                     <PauseCircle size={18} /> พักบิล
                                 </button>
                             )}
                             <Button className="py-4 rounded-2xl text-base font-black shadow-xl shadow-blue-200 active:scale-95 transition-all" onClick={saveTransaction} disabled={cart.length === 0}>
-                               {type === 'IN' ? 'รับสต็อกเข้า' : 'ชำระเงิน'}
+                               {type === 'IN' ? 'ยืนยันรับสต็อก' : 'ชำระเงิน'}
                             </Button>
                         </div>
                         <div className="pt-2 border-t border-slate-200">
                             <div className="flex justify-between items-end">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">ยอดสุทธิ</span>
-                                <span className="text-4xl font-black text-blue-600 tracking-tighter italic">฿{(grandTotal - pointsToUse).toLocaleString()}</span>
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest font-black">ยอดสุทธิ</span>
+                                <span className="text-4xl font-black text-blue-600 tracking-tighter italic font-black">฿{(grandTotal - pointsToUse).toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
