@@ -1,0 +1,24 @@
+/* กฎเหล็กสำหรับการพิมพ์เพื่อให้ข้อมูลใน preview ไม่ว่างเปล่า */
+@media screen {
+  .print-only { display: none !important; } /* ซ่อนบนหน้าจอเสมอ */
+}
+
+@media print {
+  /* ซ่อนทุกอย่างที่ไม่อยากให้พิมพ์ รวมถึง Modal และ Sidebar */
+  body * { visibility: hidden; } 
+  .no-print, .no-print * { display: none !important; }
+  
+  /* แสดงเฉพาะส่วนที่เป็นงานพิมพ์เท่านั้น */
+  .print-only, .print-only * { 
+    visibility: visible !important; 
+    display: block !important; 
+  }
+  
+  /* จัดตำแหน่งงานพิมพ์ให้อยู่บนสุดของกระดาษ */
+  .print-only {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
