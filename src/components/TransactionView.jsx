@@ -174,30 +174,33 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                                 <Card className="bg-blue-600 !p-6 border-none text-white shadow-xl shadow-blue-200/50">
                                     <div className="flex items-center gap-2 mb-4">
                                         <Users size={16} className="text-blue-100" />
-                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100">All-Member Cloud Search</h3>
+                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100">Member Search</h3>
                                     </div>
-                                    <div className="flex gap-2 mb-4">
-                                        <input 
-                                            placeholder="เบอร์โทรศัพท์ (10 หลัก)..." 
-                                            value={memberPhone} 
-                                            onChange={e => {
-                                                const val = e.target.value.replace(/\D/g, ''); 
-                                                if (val.length <= 10) setMemberPhone(val);    
-                                            }} 
-                                            className="flex-1 bg-white text-slate-900 border-none rounded-2xl p-4 font-bold outline-none shadow-inner" 
-                                        />
-                                        <button 
-                                            onClick={() => { 
-                                                if (memberPhone.length !== 10) return alert('⚠️ กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก');
-                                                const m = customers.find(c => c.phone === memberPhone); 
-                                                if(m) setCurrentMember(m); 
-                                                else alert('❌ ไม่พบสมาชิก'); 
-                                            }} 
-                                            className="bg-slate-900 text-white px-6 rounded-2xl font-black shadow-lg"
-                                        >
-                                            <Search size={20}/>
-                                        </button>
-                                    </div>
+                                   {/* --- ค้นหาเบอร์สมาชิก (จุดที่แก้ไข) --- */}
+                                <div className="flex flex-row gap-2 mb-4 h-14"> 
+                                    <input 
+                                        placeholder="เบอร์โทรสมาชิก" 
+                                        value={memberPhone} 
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            if (val.length <= 10) setMemberPhone(val);    
+                                        }} 
+                                        // 🟢 ปรับลด Padding (p-4 -> px-4) และขนาดฟอนต์บนมือถือ
+                                        className="flex-1 min-w-0 bg-white text-slate-900 border-none rounded-2xl px-4 text-sm md:text-base font-bold outline-none shadow-inner" 
+                                    />
+                                    <button 
+                                        onClick={() => { 
+                                            if (memberPhone.length !== 10) return alert('⚠️ กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก');
+                                            const m = customers.find(c => c.phone === memberPhone); 
+                                            if(m) setCurrentMember(m); 
+                                            else alert('❌ ไม่พบสมาชิก'); 
+                                        }} 
+                                        // 🟢 เพิ่ม flex items-center และ shrink-0 เพื่อป้องกันปุ่มเบี้ยว
+                                        className="bg-slate-900 text-white px-5 md:px-8 rounded-2xl font-black shadow-lg flex items-center justify-center shrink-0 active:scale-95 transition-all"
+                                    >
+                                        <Search size={20}/>
+                                    </button>
+                                </div>
                                     {currentMember && (
                                         <div className="flex justify-between items-center p-4 bg-white rounded-2xl text-slate-800 border border-blue-400 animate-in zoom-in-95">
                                             <div><p className="font-black text-sm">{currentMember.name}</p><p className="text-[10px] font-bold text-blue-600 italic">แต้มคงเหลือ: {(currentMember.points || 0).toLocaleString()}</p></div>
