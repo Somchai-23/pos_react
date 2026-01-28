@@ -20,21 +20,20 @@ export default function TransactionView({ type, products, generateDocNo, handleS
     const [receivedAmount, setReceivedAmount] = useState(0);
     const [showReceipt, setShowReceipt] = useState(false);
     const [lastBill, setLastBill] = useState(null);
+    const [lowStockAlerts, setLowStockAlerts] = useState([]);
+
+    // 🟢 ดึงข้อมูลสินค้าที่เลือกเพื่อใช้ค่า minStock ในการแสดงผล UI
+    const currentProductData = products.find(p => p.id === selectedProduct);
+    const dynamicMinStock = Number(currentProductData?.minStock || 0);
 
     useEffect(() => {
         setCurrentDocNo(generateDocNo(type));
     }, [type, generateDocNo]);
 
     const handleFullReset = () => {
-        setCart([]);
-        setCartNote('');
-        setCurrentMember(null);
-        setMemberPhone('');
-        setPointsToUse(0);
-        setIsPaymentStep(false);
-        setReceivedAmount(0);
-        setShowReceipt(false);
-        setLastBill(null);
+        setCart([]); setCartNote(''); setCurrentMember(null); setMemberPhone('');
+        setPointsToUse(0); setIsPaymentStep(false); setReceivedAmount(0);
+        setShowReceipt(false); setLastBill(null); setLowStockAlerts([]);
         setCurrentDocNo(generateDocNo(type));
     };
 
@@ -71,16 +70,28 @@ export default function TransactionView({ type, products, generateDocNo, handleS
         try {
             await runTransaction(db, async (transaction) => {
                 const snapshots = [];
+                const itemsToAlert = [];
+
                 for (const item of cart) {
                     const productRef = doc(db, "products", item.productId);
                     const productSnap = await transaction.get(productRef);
                     if (!productSnap.exists()) throw new Error(`ไม่พบสินค้า ${item.name}`);
-                    snapshots.push({ item, productRef, productSnap });
+                    
+                    const currentCloudStock = Number(productSnap.data().stock || 0);
+                    const itemMinStock = Number(productSnap.data().minStock || 0); 
+                    
+                    const remainingAfterSale = type === 'OUT' ? currentCloudStock - item.qty : currentCloudStock + item.qty;
+                    
+                    // 🟢 ตรวจสอบสินค้าใกล้หมดโดยอ้างอิงจาก minStock ของสินค้าแต่ละชิ้น
+                    if (type === 'OUT' && remainingAfterSale <= itemMinStock) {
+                        itemsToAlert.push({ name: item.name, remaining: remainingAfterSale, threshold: itemMinStock });
+                    }
+
+                    snapshots.push({ item, productRef, currentCloudStock });
                 }
 
-                for (const { item, productRef, productSnap } of snapshots) {
-                    const cloudStock = Number(productSnap.data().stock || 0);
-                    if (type === 'OUT' && item.qty > cloudStock) throw new Error(`❌ "${item.name}" เหลือไม่พอ`);
+                for (const { item, productRef, currentCloudStock } of snapshots) {
+                    if (type === 'OUT' && item.qty > currentCloudStock) throw new Error(`❌ "${item.name}" เหลือไม่พอ`);
                     transaction.update(productRef, { stock: increment(type === 'OUT' ? -Number(item.qty) : Number(item.qty)) });
                 }
 
@@ -91,8 +102,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                     receivedAmount: type === 'OUT' ? Number(receivedAmount) : 0,
                     changeAmount: type === 'OUT' ? Number(changeAmount) : 0,
                     pointsUsed: Number(pointsToUse), memberId: currentMember?.id || null, 
-                    note: cartNote,
-                    createdAt: new Date()
+                    note: cartNote, createdAt: new Date()
                 };
                 transaction.set(billRef, billData);
 
@@ -101,27 +111,16 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                     transaction.update(memberRef, { points: increment(earnedPoints - Number(pointsToUse)) });
                 }
 
-                setLastBill({
-                    ...billData,
-                    memberName: currentMember?.name || 'ลูกค้าทั่วไป',
-                    dateFormatted: new Date().toLocaleString('th-TH')
-                });
+                setLastBill({ ...billData, memberName: currentMember?.name || 'ลูกค้าทั่วไป', dateFormatted: new Date().toLocaleString('th-TH') });
+                setLowStockAlerts(itemsToAlert);
             });
-
             setShowReceipt(true); 
         } catch (error) { alert('❌ ' + error.message); }
     };
 
     return (
         <div className="p-4 md:p-8 h-full max-w-[1600px] mx-auto overflow-hidden">
-            <style>{`
-                @media print {
-                    body * { visibility: hidden !important; }
-                    .print-only, .print-only * { visibility: visible !important; }
-                    .print-only { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
-                    .no-print { display: none !important; }
-                }
-            `}</style>
+            <style>{` @media print { body * { visibility: hidden !important; } .print-only, .print-only * { visibility: visible !important; } .print-only { position: absolute; left: 0; top: 0; width: 100%; display: block !important; } .no-print { display: none !important; } } `}</style>
 
             <div className="flex flex-col lg:flex-row gap-8 h-full items-start no-print">
                 <div className="w-full lg:w-[60%] space-y-6">
@@ -147,67 +146,43 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                                         if(p) { setSelectedProduct(p.id); setPrice(type === 'IN' ? (p.buyPrice || 0) : (p.sellPrice || 0)); }
                                     })}><QrCode /></Button>
                                 </div>
-                                {/* --- ส่วนแสดงผลหลังจากเลือกสินค้าแล้ว --- */}
-{selectedProduct && (
-    <div className="space-y-4 animate-in slide-in-from-top-2">
-        
-        {/* 🟢 แถบแสดงจำนวนคงเหลือปัจจุบัน (ดึงฟังก์ชันเดิมกลับมา) */}
-        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-inner">
-            <div className="flex flex-col">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">คงเหลือปัจจุบัน</span>
-            </div>
-            
-            <div className="text-right flex flex-col items-end">
-                <span className={`text-2xl font-black ${
-                    calculateStock(selectedProduct) <= 0 
-                        ? 'text-red-500' 
-                        : calculateStock(selectedProduct) <= 5 // ใช้เกณฑ์ Low Stock ที่เราตั้งไว้
-                            ? 'text-orange-500 animate-pulse' 
-                            : 'text-blue-600'
-                }`}>
-                    {calculateStock(selectedProduct).toLocaleString()} {products.find(p => p.id === selectedProduct)?.unit || 'ชิ้น'}
-                </span>
-                
-                {/* แสดงป้ายเตือนสถานะ */}
-                {calculateStock(selectedProduct) <= 5 && calculateStock(selectedProduct) > 0 && (
-                    <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full uppercase mt-1">
-                        ⚠️ ใกล้หมดคลัง
-                    </span>
-                )}
-                {calculateStock(selectedProduct) <= 0 && (
-                    <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase mt-1">
-                        ❌ สินค้าหมด
-                    </span>
-                )}
-            </div>
-        </div>
-
-        {/* ส่วนกรอกราคาและจำนวน (คงเดิมไว้) */}
-        <div className="grid grid-cols-2 gap-4">
-            <Input label="ราคาต่อหน่วย" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
-            <Input label="จำนวนรายการ" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
-            <Button onClick={addToCart} className="col-span-full py-4 text-base font-black shadow-lg shadow-blue-100">
-                <Plus size={18}/> เพิ่มลงตะกร้า
-            </Button>
-        </div>
-    </div>
-)}
+                                {selectedProduct && (
+                                    <div className="space-y-4 animate-in slide-in-from-top-2">
+                                        <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-inner">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">คงเหลือปัจจุบัน</span>
+                                            <span className={`font-black flex flex-col items-end ${
+                                                calculateStock(selectedProduct) <= 0 ? 'text-red-500' : 
+                                                calculateStock(selectedProduct) <= dynamicMinStock ? 'text-orange-500 animate-pulse' : 'text-blue-600'
+                                            }`}>
+                                                <span>{calculateStock(selectedProduct).toLocaleString()} {currentProductData?.unit}</span>
+                                                {/* 🟢 แสดงแจ้งเตือนตาม minStock รายชิ้น */}
+                                                {calculateStock(selectedProduct) <= dynamicMinStock && calculateStock(selectedProduct) > 0 && (
+                                                    <span className="text-[9px] font-bold uppercase tracking-tighter text-orange-400 italic">⚠️ ต่ำกว่าจุดสั่งซื้อ ({dynamicMinStock})</span>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <Input label="ราคา/หน่วย" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
+                                            <Input label="จำนวน" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
+                                            <Button onClick={addToCart} className="col-span-full py-4 text-base font-black shadow-lg shadow-blue-100"><Plus size={18}/> เพิ่มรายการ</Button>
+                                        </div>
+                                    </div>
+                                )}
                             </Card>
 
                             {type === 'OUT' && (
                                 <Card className="bg-blue-600 !p-6 border-none text-white shadow-xl shadow-blue-200/50">
                                     <div className="flex items-center gap-2 mb-4">
                                         <Users size={16} className="text-blue-100" />
-                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100 font-black">Member Search</h3>
+                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100">All-Member Cloud Search</h3>
                                     </div>
                                     <div className="flex gap-2 mb-4">
-                                        {/* 🟢 อัปเดต Input: บังคับตัวเลข 10 หลัก */}
                                         <input 
                                             placeholder="เบอร์โทรศัพท์ (10 หลัก)..." 
                                             value={memberPhone} 
                                             onChange={e => {
-                                                const val = e.target.value.replace(/\D/g, ''); // กรองตัวหนังสือออก
-                                                if (val.length <= 10) setMemberPhone(val);    // จำกัด 10 ตัว
+                                                const val = e.target.value.replace(/\D/g, ''); 
+                                                if (val.length <= 10) setMemberPhone(val);    
                                             }} 
                                             className="flex-1 bg-white text-slate-900 border-none rounded-2xl p-4 font-bold outline-none shadow-inner" 
                                         />
@@ -224,7 +199,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                                         </button>
                                     </div>
                                     {currentMember && (
-                                        <div className="flex justify-between items-center p-4 bg-white rounded-2xl text-slate-800 border border-blue-400">
+                                        <div className="flex justify-between items-center p-4 bg-white rounded-2xl text-slate-800 border border-blue-400 animate-in zoom-in-95">
                                             <div><p className="font-black text-sm">{currentMember.name}</p><p className="text-[10px] font-bold text-blue-600 italic">แต้มคงเหลือ: {(currentMember.points || 0).toLocaleString()}</p></div>
                                             <div className="text-right">
                                                 <span className="text-[9px] font-black text-slate-400 uppercase">ใช้แต้ม (฿)</span>
@@ -241,7 +216,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                         </>
                     ) : (
                         <Card className="!p-8 border-2 border-blue-100 shadow-xl animate-in zoom-in-95">
-                            <button onClick={() => setIsPaymentStep(false)} className="flex items-center gap-2 text-slate-400 font-bold text-sm mb-6 hover:text-slate-600"><ArrowLeft size={18}/> ย้อนกลับไปตะกร้า</button>
+                            <button onClick={() => setIsPaymentStep(false)} className="flex items-center gap-2 text-slate-400 font-bold text-sm mb-6 hover:text-slate-600 transition-all"><ArrowLeft size={18}/> ย้อนกลับไปตะกร้า</button>
                             <div className="mb-8 text-center">
                                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">ยอดชำระสุทธิ</p>
                                 <p className="text-6xl font-black text-blue-600">฿{finalAmount.toLocaleString()}</p>
@@ -249,16 +224,16 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                             <div className="space-y-6">
                                 <div>
                                     <label className="block text-center text-xs font-black text-slate-500 uppercase mb-3">รับเงินสด</label>
-                                    <input autoFocus type="number" className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2rem] py-6 text-4xl font-black text-center outline-none" value={receivedAmount || ''} onChange={(e) => setReceivedAmount(Number(e.target.value))} placeholder="0.00" />
+                                    <input autoFocus type="number" className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2rem] py-6 text-4xl font-black text-center outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={receivedAmount || ''} onChange={(e) => setReceivedAmount(Number(e.target.value))} placeholder="0.00" />
                                 </div>
                                 <div className="grid grid-cols-4 gap-3">
                                     {[20, 100, 500, 1000].map(val => (
-                                        <button key={val} onClick={() => setReceivedAmount(prev => Number(prev) + val)} className="py-4 bg-white border border-slate-200 rounded-2xl font-black text-slate-600 hover:bg-blue-600 hover:text-white transition-all text-sm shadow-sm">+{val}</button>
+                                        <button key={val} onClick={() => setReceivedAmount(prev => Number(prev) + val)} className="py-4 bg-white border border-slate-200 rounded-2xl font-black text-slate-600 hover:bg-blue-600 hover:text-white transition-all text-sm active:scale-95 shadow-sm">+{val}</button>
                                     ))}
-                                    <button onClick={() => setReceivedAmount(finalAmount)} className="col-span-2 py-4 bg-green-50 text-green-600 border border-green-200 rounded-2xl font-black hover:bg-green-600 hover:text-white">จ่ายพอดี</button>
-                                    <button onClick={() => setReceivedAmount(0)} className="col-span-2 py-4 bg-red-50 text-red-500 border border-red-200 rounded-2xl font-black hover:bg-red-500 hover:text-white">ล้าง</button>
+                                    <button onClick={() => setReceivedAmount(finalAmount)} className="col-span-2 py-4 bg-green-50 text-green-600 border border-green-200 rounded-2xl font-black hover:bg-green-600 hover:text-white transition-all">จ่ายพอดี</button>
+                                    <button onClick={() => setReceivedAmount(0)} className="col-span-2 py-4 bg-red-50 text-red-500 border border-red-200 rounded-2xl font-black hover:bg-red-500 hover:text-white transition-all">ล้างยอด</button>
                                 </div>
-                                <div className={`p-6 rounded-[2rem] text-center border-2 ${receivedAmount >= finalAmount ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-100'}`}>
+                                <div className={`p-6 rounded-[2rem] text-center border-2 transition-all ${receivedAmount >= finalAmount ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-100'}`}>
                                     <p className="text-[10px] font-black text-slate-400 uppercase mb-1">เงินทอน</p>
                                     <p className={`text-4xl font-black ${receivedAmount >= finalAmount ? 'text-green-600' : 'text-slate-300'}`}>฿{changeAmount.toLocaleString()}</p>
                                 </div>
@@ -274,7 +249,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                     </div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-4">
                         {cart.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-200 opacity-40"><ShoppingCart size={64} className="mb-4" /><p className="text-[10px] font-black">ตะกร้าว่าง</p></div>
+                            <div className="h-full flex flex-col items-center justify-center text-slate-200 opacity-40"><ShoppingCart size={64} className="mb-4" /><p className="text-[10px] font-black uppercase">ตะกร้าว่าง</p></div>
                         ) : (
                             cart.map((item, idx) => (
                                 <div key={idx} className="flex justify-between items-center group animate-in slide-in-from-right-2">
@@ -309,10 +284,25 @@ export default function TransactionView({ type, products, generateDocNo, handleS
 
             {showReceipt && lastBill && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 no-print">
-                    <Card className="max-w-md w-full p-8 text-center relative animate-in zoom-in-95 shadow-2xl">
+                    <Card className="max-w-md w-full p-8 text-center relative animate-in zoom-in-95 shadow-2xl overflow-y-auto max-h-[90vh]">
                         <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner"><CheckCircle size={48} /></div>
                         <h2 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">ทำรายการสำเร็จ</h2>
-                        <p className="text-slate-400 text-sm mb-8">บิลเลขที่: {lastBill.docNo}</p>
+                        <p className="text-slate-400 text-sm mb-6">บิลเลขที่: {lastBill.docNo}</p>
+                        
+                        {lowStockAlerts.length > 0 && (
+                            <div className="mb-6 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-left">
+                                <h4 className="text-[10px] font-black text-orange-600 uppercase mb-2 flex items-center gap-1"><AlertCircle size={14}/> สินค้าต่ำกว่าเกณฑ์สั่งซื้อ</h4>
+                                <ul className="space-y-1">
+                                    {lowStockAlerts.map((item, i) => (
+                                        <li key={i} className="text-xs font-bold text-slate-600 flex justify-between">
+                                            <span>• {item.name}</span>
+                                            <span className="text-orange-600 font-black">เหลือ: {item.remaining.toLocaleString()} (Min: {item.threshold})</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
                         <div className="space-y-3">
                             <Button className="w-full py-5 text-lg font-black flex items-center justify-center gap-3 shadow-xl shadow-blue-200" onClick={() => window.print()}><Printer size={24} /> พิมพ์ใบเสร็จ</Button>
                             <Button variant="secondary" className="w-full py-4 text-slate-500 font-bold" onClick={handleFullReset}>เริ่มบิลใหม่</Button>
@@ -320,7 +310,6 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                     </Card>
                 </div>
             )}
-
             {lastBill && <PrintReceipt data={lastBill} />}
         </div>
     );

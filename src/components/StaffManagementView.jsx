@@ -51,7 +51,6 @@ export default function StaffManagementView({ users, setUsers, currentUser }) {
         <div className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto animate-in fade-in duration-500">
             <div>
                 <h1 className="text-3xl font-black text-slate-800 tracking-tight">จัดการพนักงาน</h1>
-                <p className="text-slate-400 text-sm font-bold mt-1 uppercase tracking-wider">Cloud Staff Synchronization</p>
             </div>
 
             {/* ส่วนเพิ่มพนักงานใหม่ */}
