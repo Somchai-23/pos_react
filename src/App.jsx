@@ -102,7 +102,7 @@ export default function POSStockApp() {
       <aside className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col sticky top-0 h-screen shadow-sm z-50">
         <div className="p-6 border-b flex items-center gap-3">
           <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-100"><LayoutDashboard size={20}/></div>
-          <span className="font-black text-xl tracking-tight text-slate-800">MY POS CLOUD</span>
+          <span className="font-black text-xl tracking-tight text-slate-800">POS NAJA</span>
         </div>
         <nav className="flex-1 p-4 space-y-2">
           {menuItems.map((item) => (

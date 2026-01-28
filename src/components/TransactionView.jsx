@@ -158,16 +158,11 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                                 )}
                             </Card>
 
-                            <Card className="!p-5 border-2 border-dashed border-slate-200 bg-white">
-                                <div className="flex items-center gap-2 mb-3 text-slate-400 text-[10px] font-black uppercase"><MessageSquare size={16}/> หมายเหตุบันทึกบิล</div>
-                                <textarea className="w-full bg-slate-50 rounded-xl p-4 text-sm min-h-[60px] outline-none" placeholder="รายละเอียดบิล..." value={cartNote} onChange={e => setCartNote(e.target.value)} />
-                            </Card>
-
                             {type === 'OUT' && (
                                 <Card className="bg-blue-600 !p-6 border-none text-white shadow-xl shadow-blue-200/50">
                                     <div className="flex items-center gap-2 mb-4">
                                         <Users size={16} className="text-blue-100" />
-                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100 font-black">All-Member Cloud Search</h3>
+                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100 font-black">Member Search</h3>
                                     </div>
                                     <div className="flex gap-2 mb-4">
                                         {/* 🟢 อัปเดต Input: บังคับตัวเลข 10 หลัก */}
@@ -203,6 +198,10 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                                     )}
                                 </Card>
                             )}
+                            <Card className="!p-5 border-2 border-dashed border-slate-200 bg-white">
+                                <div className="flex items-center gap-2 mb-3 text-slate-400 text-[10px] font-black uppercase"><MessageSquare size={16}/> หมายเหตุ</div>
+                                <textarea className="w-full bg-slate-50 rounded-xl p-4 text-sm min-h-[60px] outline-none" placeholder="รายละเอียดบิล..." value={cartNote} onChange={e => setCartNote(e.target.value)} />
+                            </Card>
                         </>
                     ) : (
                         <Card className="!p-8 border-2 border-blue-100 shadow-xl animate-in zoom-in-95">

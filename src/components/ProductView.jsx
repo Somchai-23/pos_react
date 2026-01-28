@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, QrCode, ChevronRight, Save, Wand2, Printer, Trash2, Lock, Eye } from 'lucide-react';
+import { Plus, Search, QrCode, ChevronRight, Save, Wand2, Printer, Trash2, Lock, Eye, AlertCircle, Box, PackageX } from 'lucide-react';
 import QRCode from "react-qr-code";
 import { Button, Input, Card, ImageUpload } from './UIComponents';
 import { db } from '../firebase'; 
@@ -13,34 +13,34 @@ export default function ProductView({ products, viewState, setViewState, handleS
 
     const isOwner = userRole === 'OWNER';
 
-    // 🟢 ฟังก์ชันสุ่มรหัสแบบตรวจสอบความซ้ำ (Smart Generate)
-const handleGenerateRandomCode = () => {
-    if (!isOwner) return;
+    // 🟢 1. คำนวณสรุปสถานะ (ฟังก์ชันใหม่ที่เพิ่มเข้ามา)
+    const lowStockCount = products.filter(p => {
+        const stock = Number(p.stock || 0);
+        const min = Number(p.minStock || 5);
+        return stock > 0 && stock <= min;
+    }).length;
 
-    let newCode = '';
-    let isDuplicate = true;
+    const outOfStockCount = products.filter(p => Number(p.stock || 0) <= 0).length;
 
-    // วนลูปสุ่มไปเรื่อยๆ จนกว่าจะได้รหัสที่ไม่ซ้ำกับในอาเรย์ products
-    while (isDuplicate) {
-        // สุ่มเลข 8 หลัก
-        newCode = Math.floor(10000000 + Math.random() * 90000000).toString();
-        
-        // ตรวจสอบว่ามีสินค้าตัวไหนใช้รหัสนี้ไปแล้วหรือยัง
-        const duplicate = products.find(p => p.code === newCode);
-        
-        if (!duplicate) {
-            isDuplicate = false; // ถ้าไม่ซ้ำ ให้หยุดลูป
+    // 🔵 2. คงฟังก์ชันสุ่มรหัสเดิมไว้
+    const handleGenerateRandomCode = () => {
+        if (!isOwner) return;
+        let newCode = '';
+        let isDuplicate = true;
+        while (isDuplicate) {
+            newCode = Math.floor(10000000 + Math.random() * 90000000).toString();
+            const duplicate = products.find(p => p.code === newCode);
+            if (!duplicate) isDuplicate = false;
         }
-    }
+        setTempProduct({ ...tempProduct, code: newCode });
+    };
 
-    setTempProduct({ ...tempProduct, code: newCode });
-    console.log("🎯 สร้างรหัสใหม่ที่ไม่ซ้ำแน่นอน:", newCode);
-};
-
+    // 🔵 3. คงฟังก์ชันพิมพ์ QR เดิมไว้
     const handlePrintQR = () => {
         window.print();
     };
 
+    // 🔵 4. คงฟังก์ชันบันทึกข้อมูลเดิมไว้
     const handleSaveProduct = async () => {
         if (!isOwner) return;
         if (!tempProduct.name || !tempProduct.code) return alert('⚠️ กรุณากรอกชื่อและรหัสสินค้าให้ครบ');
@@ -53,8 +53,6 @@ const handleGenerateRandomCode = () => {
             sellPrice: Number(tempProduct.sellPrice || 0),
             buyPrice: Number(tempProduct.buyPrice || 0),
             minStock: Number(tempProduct.minStock || 0),
-            // ✅ รักษาค่า stock เดิมไว้ (ถ้าเป็นสินค้าใหม่จะเริ่มต้นที่ 0)
-            // ระบบจะไม่อนุญาตให้แก้เลขนี้จากหน้าฟอร์มนี้อีกต่อไป
             stock: Number(tempProduct.stock || 0) 
         };
 
@@ -111,7 +109,7 @@ const handleGenerateRandomCode = () => {
                             <ChevronRight className="rotate-180 text-gray-600" size={20} />
                         </button>
                         <h2 className="text-2xl font-bold text-gray-900 tracking-tight uppercase">
-                            {isOwner ? (tempProduct.id ? 'Edit Product' : 'New Product') : 'Product Details'}
+                            {isOwner ? (tempProduct.id ? 'Edit' : 'New Product') : 'Product Details'}
                         </h2>
                     </div>
                     {tempProduct.id && isOwner && (
@@ -132,15 +130,7 @@ const handleGenerateRandomCode = () => {
                         <div className="col-span-full">
                             <div className="flex items-end gap-2">
                                 <div className="flex-1">
-                                    <Input 
-                                        label="รหัสสินค้า (SKU)" 
-                                        value={tempProduct.code || ''} 
-                                        onChange={e => setTempProduct({...tempProduct, code: e.target.value})} 
-                                        disabled={!isOwner}
-                                        icon={QrCode}
-                                        onIconClick={() => handleScanQR((code) => setTempProduct({...tempProduct, code}))}
-                                        placeholder="รหัสสินค้า..."
-                                    />
+                                    <Input label="รหัสสินค้า" value={tempProduct.code || ''} onChange={e => setTempProduct({...tempProduct, code: e.target.value})} disabled={!isOwner} icon={QrCode} onIconClick={() => handleScanQR((code) => setTempProduct({...tempProduct, code}))} />
                                 </div>
                                 {isOwner && (
                                     <button type="button" onClick={handleGenerateRandomCode} className="mb-4 p-3.5 bg-purple-50 text-purple-600 rounded-xl border border-purple-100 hover:bg-purple-100 active:scale-95 transition-all"><Wand2 size={20} /></button>
@@ -148,7 +138,6 @@ const handleGenerateRandomCode = () => {
                             </div>
                         </div>
 
-                        {/* ส่วน QR Code & Print */}
                         {tempProduct.code && isOwner && (
                             <div className="col-span-full bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-6">
                                 <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -165,13 +154,9 @@ const handleGenerateRandomCode = () => {
                         )}
 
                         <div className="col-span-full">
-                            <Input label="ชื่อสินค้า" value={tempProduct.name || ''} onChange={e => setTempProduct({...tempProduct, name: e.target.value})} disabled={!isOwner} placeholder="ชื่อสินค้า..." />
+                            <Input label="ชื่อสินค้า" value={tempProduct.name || ''} onChange={e => setTempProduct({...tempProduct, name: e.target.value})} disabled={!isOwner} />
                         </div>
-
                         <Input label="หน่วยนับ" value={tempProduct.unit || 'ชิ้น'} onChange={e => setTempProduct({...tempProduct, unit: e.target.value})} disabled={!isOwner} />
-
-                        {/* 🛑 ลบช่อง 'สต็อกปัจจุบัน' ออกแล้ว เพื่อให้ตัดยอดผ่านระบบเท่านั้น */}
-
                         <Input label="สต็อกขั้นต่ำ" type="number" value={tempProduct.minStock || ''} onChange={e => setTempProduct({...tempProduct, minStock: e.target.value})} disabled={!isOwner} />
                         
                         {isOwner ? (
@@ -182,15 +167,9 @@ const handleGenerateRandomCode = () => {
                                 <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl text-gray-400 text-xs italic flex items-center gap-2"><Lock size={14}/> ข้อมูลถูกจำกัด</div>
                             </div>
                         )}
-                        
                         <Input label="ราคาขาย" type="number" value={tempProduct.sellPrice || ''} onChange={e => setTempProduct({...tempProduct, sellPrice: e.target.value})} disabled={!isOwner} />
                     </div>
-                    
-                    {isOwner && (
-                        <Button onClick={handleSaveProduct} className="w-full mt-6 py-4 text-base font-black shadow-lg shadow-blue-100 transition-all hover:bg-blue-700">
-                            <Save size={20} /> บันทึกข้อมูลสินค้า
-                        </Button>
-                    )}
+                    {isOwner && <Button onClick={handleSaveProduct} className="w-full mt-6 py-4 font-black shadow-lg shadow-blue-100"><Save size={20} /> บันทึกข้อมูลสินค้า</Button>}
                 </Card>
             </div>
         );
@@ -198,11 +177,26 @@ const handleGenerateRandomCode = () => {
 
     return (
         <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto pb-24">
-            <div className="flex justify-between items-center no-print">
-                <div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">คลังสินค้า</h1>
-                    <p className="text-slate-400 text-sm font-bold mt-1">จำนวนสต็อกจะอัปเดตผ่านการ ซื้อเข้า/ขายออก เท่านั้น</p>
+            {/* 🟢 ส่วน Dashboard สรุปสต็อก (ฟังก์ชันใหม่) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 no-print">
+                <div className="bg-orange-50 border border-orange-100 p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4">
+                    <div className="w-12 h-12 bg-orange-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200"><Box size={24}/></div>
+                    <div>
+                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">ใกล้หมดคลัง</p>
+                        <p className="text-2xl font-black text-slate-800">{lowStockCount} <span className="text-xs">รายการ</span></p>
+                    </div>
                 </div>
+                <div className="bg-red-50 border border-red-100 p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4">
+                    <div className="w-12 h-12 bg-red-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-red-200"><PackageX size={24}/></div>
+                    <div>
+                        <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">หมดสต็อก</p>
+                        <p className="text-2xl font-black text-slate-800">{outOfStockCount} <span className="text-xs">รายการ</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-between items-center no-print pt-4">
+                <h1 className="text-3xl font-black text-slate-800 tracking-tight">คลังสินค้า</h1>
                 {isOwner && (
                     <Button onClick={() => { setTempProduct({ img: '📦', minStock: 5, buyPrice: 0, sellPrice: 0, stock: 0 }); setViewState('form'); }}>
                         <Plus size={20} /> <span className="hidden sm:inline">เพิ่มสินค้าใหม่</span>
@@ -211,16 +205,24 @@ const handleGenerateRandomCode = () => {
             </div>
 
             <div className="relative no-print">
-                <input type="text" placeholder="ค้นหาชื่อ หรือ SKU..." className="w-full bg-white border border-gray-200 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-4 focus:ring-blue-50 outline-none transition-all shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <input type="text" placeholder="ค้นหาชื่อหรือรหัสสินค้า..." className="w-full bg-white border border-gray-200 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-4 focus:ring-blue-50 outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 <Search className="absolute left-4 top-4 text-gray-400" size={20} />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 no-print">
                 {products.filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.code?.includes(searchTerm)).map(p => {
                     const currentStock = Number(p.stock || 0);
-                    const isLow = currentStock <= (p.minStock || 5);
+                    const minStock = Number(p.minStock || 5);
+                    const isOutOfStock = currentStock <= 0;
+                    const isLowStock = currentStock > 0 && currentStock <= minStock;
+
                     return (
-                        <div key={p.id} onClick={() => { setTempProduct(p); setViewState('form'); }} className="bg-white p-5 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col gap-4 group relative hover:border-blue-300 transition-all cursor-pointer overflow-hidden">
+                        <div key={p.id} onClick={() => { setTempProduct(p); setViewState('form'); }} 
+                             className={`bg-white p-5 rounded-[2.5rem] border shadow-sm flex flex-col gap-4 group relative transition-all cursor-pointer overflow-hidden ${
+                                isOutOfStock ? 'border-red-200 bg-red-50/20' : 
+                                isLowStock ? 'border-orange-200 bg-orange-50/10' : 'border-gray-100 hover:border-blue-300'
+                             }`}>
+                            
                             <div className="flex items-center gap-4">
                                 <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center overflow-hidden border border-gray-100 group-hover:scale-105 transition-transform">
                                     {p.img && p.img.startsWith('data:') ? <img src={p.img} alt="Product" className="w-full h-full object-cover" /> : <span className="text-3xl">{p.img}</span>}
@@ -234,18 +236,24 @@ const handleGenerateRandomCode = () => {
                             <div className="flex justify-between items-end border-t pt-4 border-slate-50">
                                 <div>
                                     <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-black">คงเหลือ</p>
-                                    <span className={`text-xl font-black ${isLow ? 'text-red-500 animate-pulse' : 'text-blue-600'}`}>
+                                    <span className={`text-xl font-black ${
+                                        isOutOfStock ? 'text-red-600' : 
+                                        isLowStock ? 'text-orange-500 animate-pulse' : 'text-blue-600'
+                                    }`}>
                                         {currentStock} <span className="text-[10px] text-slate-300 uppercase">{p.unit}</span>
                                     </span>
+                                    {isLowStock && <p className="text-[9px] font-bold text-orange-400 uppercase mt-1 flex items-center gap-1"><AlertCircle size={10}/> Low Stock</p>}
+                                    {isOutOfStock && <p className="text-[9px] font-bold text-red-500 uppercase mt-1">❌ Out of Stock</p>}
                                 </div>
                                 <div className="text-right">
                                     <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-black">ราคาขาย</p>
                                     <span className="text-xl font-black text-slate-800">฿{Number(p.sellPrice || 0).toLocaleString()}</span>
                                 </div>
                             </div>
-
                             {isOwner && (
-                                <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id); }} className="absolute top-4 right-4 p-2 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18} /></button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id); }} className="absolute top-4 right-4 p-2 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                    <Trash2 size={18} />
+                                </button>
                             )}
                         </div>
                     );

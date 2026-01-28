@@ -72,7 +72,7 @@ export default function MembershipView({ customers, settings, setSettings }) {
                     <Card className="p-5 border-blue-50 shadow-sm">
                         <h3 className="font-bold mb-4 flex items-center gap-2 text-blue-900"><UserPlus size={18}/> ลงทะเบียนสมาชิกใหม่</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <Input label="ชื่อ-นามสกุล" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} placeholder="ระบุชื่อลูกค้า..." />
+                            <Input label="ชื่อ-นามสกุล" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} placeholder="ระบุชื่อลูกค้า" />
                             
                             {/* 🟢 อัปเดตช่องเบอร์โทรศัพท์: บังคับตัวเลข 10 หลัก */}
                             <Input 
@@ -91,7 +91,7 @@ export default function MembershipView({ customers, settings, setSettings }) {
                     </Card>
 
                     <div className="relative">
-                        <input type="text" placeholder="ค้นหาชื่อหรือเบอร์โทร..." className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-4 focus:ring-blue-50 outline-none transition-all shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                        <input type="text" placeholder="ค้นหาชื่อหรือเบอร์โทร" className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-4 focus:ring-blue-50 outline-none transition-all shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                         <Search className="absolute left-4 top-4 text-slate-300" size={20} />
                     </div>
 
@@ -132,10 +132,6 @@ export default function MembershipView({ customers, settings, setSettings }) {
                         </div>
 
                         <div className="space-y-6">
-                            <div className="bg-blue-50 p-4 rounded-2xl flex items-start gap-3 border border-blue-100">
-                                <AlertCircle className="text-blue-600 shrink-0" size={20} />
-                                <p className="text-xs text-blue-700 leading-relaxed font-medium">ข้อมูลจะบันทึกลงระบบ Cloud เมื่อกดยืนยันเท่านั้น</p>
-                            </div>
 
                             <div className="space-y-4">
                                 <Input label="ยอดซื้อกี่บาท ได้ 1 แต้ม?" type="number" value={tempSettings.bahtPerPoint} onChange={e => setTempSettings({...tempSettings, bahtPerPoint: Number(e.target.value)})} />
