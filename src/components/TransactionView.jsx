@@ -147,15 +147,51 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                                         if(p) { setSelectedProduct(p.id); setPrice(type === 'IN' ? (p.buyPrice || 0) : (p.sellPrice || 0)); }
                                     })}><QrCode /></Button>
                                 </div>
-                                {selectedProduct && (
-                                    <div className="space-y-4 animate-in slide-in-from-top-2">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <Input label="ราคา/หน่วย" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
-                                            <Input label="จำนวน" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
-                                            <Button onClick={addToCart} className="col-span-full py-4 text-base font-black shadow-lg shadow-blue-100"><Plus size={18}/> เพิ่มรายการ</Button>
-                                        </div>
-                                    </div>
-                                )}
+                                {/* --- ส่วนแสดงผลหลังจากเลือกสินค้าแล้ว --- */}
+{selectedProduct && (
+    <div className="space-y-4 animate-in slide-in-from-top-2">
+        
+        {/* 🟢 แถบแสดงจำนวนคงเหลือปัจจุบัน (ดึงฟังก์ชันเดิมกลับมา) */}
+        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-inner">
+            <div className="flex flex-col">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">คงเหลือปัจจุบัน</span>
+            </div>
+            
+            <div className="text-right flex flex-col items-end">
+                <span className={`text-2xl font-black ${
+                    calculateStock(selectedProduct) <= 0 
+                        ? 'text-red-500' 
+                        : calculateStock(selectedProduct) <= 5 // ใช้เกณฑ์ Low Stock ที่เราตั้งไว้
+                            ? 'text-orange-500 animate-pulse' 
+                            : 'text-blue-600'
+                }`}>
+                    {calculateStock(selectedProduct).toLocaleString()} {products.find(p => p.id === selectedProduct)?.unit || 'ชิ้น'}
+                </span>
+                
+                {/* แสดงป้ายเตือนสถานะ */}
+                {calculateStock(selectedProduct) <= 5 && calculateStock(selectedProduct) > 0 && (
+                    <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full uppercase mt-1">
+                        ⚠️ ใกล้หมดคลัง
+                    </span>
+                )}
+                {calculateStock(selectedProduct) <= 0 && (
+                    <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase mt-1">
+                        ❌ สินค้าหมด
+                    </span>
+                )}
+            </div>
+        </div>
+
+        {/* ส่วนกรอกราคาและจำนวน (คงเดิมไว้) */}
+        <div className="grid grid-cols-2 gap-4">
+            <Input label="ราคาต่อหน่วย" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
+            <Input label="จำนวนรายการ" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
+            <Button onClick={addToCart} className="col-span-full py-4 text-base font-black shadow-lg shadow-blue-100">
+                <Plus size={18}/> เพิ่มลงตะกร้า
+            </Button>
+        </div>
+    </div>
+)}
                             </Card>
 
                             {type === 'OUT' && (
