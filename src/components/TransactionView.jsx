@@ -38,17 +38,17 @@ export default function TransactionView({ type, products, generateDocNo, handleS
         setCurrentDocNo(generateDocNo(type));
     };
 
-    // --- 🟢 ฟังก์ชันพักบิล (เพิ่ม totalAmount เข้าไปด้วย) ---
+    // --- 🟢 ฟังก์ชันพักบิล ---
     const holdCurrentBill = () => {
         if (cart.length === 0) return alert('⚠️ ตะกร้าว่างเปล่า พักบิลไม่ได้');
         const newHeldBill = {
             id: Date.now(),
             cart: [...cart],
-            totalAmount: finalAmount, // เก็บยอดเงินไว้แสดงผลใน Modal
             memberPhone,
             currentMember,
             pointsToUse,
             cartNote,
+            totalAmount: finalAmount, // เก็บยอดไว้แสดงใน Modal
             timestamp: new Date()
         };
         setHeldBills(prev => [...(prev || []), newHeldBill]);
@@ -59,7 +59,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
     // --- 🟢 ฟังก์ชันเรียกคืนบิล ---
     const recallBill = (bill) => {
         if (cart.length > 0) {
-            if (!confirm('⚠️ มีรายการค้างในตะกร้า ต้องการล้างตะกร้าเพื่อดึงบิลที่พักไว้มาแทนที่ใช่ไหม?')) return;
+            if (!confirm('⚠️ มีรายการค้างอยู่ในตะกร้า ต้องการล้างตะกร้าและดึงบิลนี้มาแทนที่ใช่หรือไม่?')) return;
         }
         setCart(bill.cart);
         setMemberPhone(bill.memberPhone || '');
@@ -70,14 +70,15 @@ export default function TransactionView({ type, products, generateDocNo, handleS
         setShowHeldBills(false);
     };
 
-    // --- 🟢 ฟังก์ชันลบบิลที่พักทิ้ง (กรณีไม่ต้องการแล้ว) ---
+    // --- 🟢 ฟังก์ชันลบบิลที่พักไว้ทิ้ง ---
     const deleteHeldBill = (e, billId) => {
-        e.stopPropagation(); // กันไม่ให้ไปกดเรียกคืนบิล
+        e.stopPropagation();
         if (confirm('🗑️ ต้องการลบบิลที่พักไว้นี้ทิ้งหรือไม่?')) {
             setHeldBills(prev => prev.filter(b => b.id !== billId));
         }
     };
 
+    // --- 🟢 ฟังก์ชันคำนวณเงิน (กลับไปใช้ Logic เดิมที่คุณส่งมา) ---
     const grandTotal = cart.reduce((sum, item) => sum + item.total, 0);
     const finalAmount = grandTotal - Number(pointsToUse);
     const earnedPoints = currentMember && type === 'OUT' ? Math.floor(finalAmount / (memberSettings?.bahtPerPoint || 20)) : 0;
@@ -168,10 +169,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                         <div className="flex items-center gap-4">
                             <h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">{type === 'OUT' ? 'Sales Terminal' : 'Stock Intake'}</h1>
                             {type === 'OUT' && heldBills.length > 0 && (
-                                <button 
-                                    onClick={() => setShowHeldBills(true)} 
-                                    className="bg-orange-100 text-orange-600 px-4 py-2 rounded-2xl text-[10px] font-black flex items-center gap-2 animate-pulse border border-orange-200 shadow-sm"
-                                >
+                                <button onClick={() => setShowHeldBills(true)} className="bg-orange-100 text-orange-600 px-4 py-2 rounded-2xl text-[10px] font-black flex items-center gap-2 animate-pulse border border-orange-200 shadow-sm">
                                     <PauseCircle size={16} /> บิลที่พัก ({heldBills.length})
                                 </button>
                             )}
@@ -179,88 +177,65 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                         <span className="font-mono text-[10px] bg-white border border-slate-200 px-3 py-1 rounded-full text-slate-400 font-bold">{currentDocNo}</span>
                     </div>
 
-                    {!isPaymentStep ? (
-                        <>
-                            <Card className="!p-6 border-none shadow-sm">
-                                <div className="flex gap-2 mb-4">
-                                    <select className="flex-1 bg-slate-50 border-2 border-slate-50 rounded-2xl p-4 text-sm font-bold outline-none" value={selectedProduct} onChange={(e) => {
-                                        const pid = e.target.value; setSelectedProduct(pid);
-                                        const p = products.find(prod => prod.id === pid);
-                                        if(p) setPrice(type === 'IN' ? (p.buyPrice || 0) : (p.sellPrice || 0));
-                                    }}>
-                                        <option value="">-- เลือกสินค้า --</option>
-                                        {products.map(p => <option key={p.id} value={p.id}>{p.code} | {p.name}</option>)}
-                                    </select>
-                                    <Button variant="secondary" className="rounded-2xl w-14 h-14 shrink-0 shadow-sm" onClick={() => handleScanQR((code) => {
-                                        const p = products.find(prod => prod.code === code);
-                                        if(p) { setSelectedProduct(p.id); setPrice(type === 'IN' ? (p.buyPrice || 0) : (p.sellPrice || 0)); }
-                                    })}><QrCode /></Button>
-                                </div>
-                                {selectedProduct && (
-                                    <div className="space-y-4 animate-in slide-in-from-top-2">
-                                        <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-inner">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">คงเหลือปัจจุบัน</span>
-                                            <span className={`font-black flex flex-col items-end ${
-                                                calculateStock(selectedProduct) <= 0 ? 'text-red-500' : 
-                                                calculateStock(selectedProduct) <= dynamicMinStock ? 'text-orange-500 animate-pulse' : 'text-blue-600'
-                                            }`}>
-                                                <span>{calculateStock(selectedProduct).toLocaleString()} {currentProductData?.unit}</span>
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <Input label="ราคา/หน่วย" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
-                                            <Input label="จำนวน" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
-                                            <Button onClick={addToCart} className="col-span-full py-4 text-base font-black shadow-lg shadow-blue-100"><Plus size={18}/> เพิ่มรายการ</Button>
-                                        </div>
-                                    </div>
-                                )}
-                            </Card>
+                    {isPaymentStep ? (
+    <Card className="!p-8 border-2 border-blue-100 shadow-xl animate-in zoom-in-95">
+        <button onClick={() => setIsPaymentStep(false)} className="flex items-center gap-2 text-slate-400 font-bold text-sm mb-6 hover:text-slate-600 transition-all">
+            <ArrowLeft size={18}/> ย้อนกลับไปตะกร้า
+        </button>
+        
+        <div className="mb-8 text-center">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">ยอดชำระสุทธิ</p>
+            <p className="text-6xl font-black text-blue-600">฿{finalAmount.toLocaleString()}</p>
+        </div>
 
-                            {type === 'OUT' && (
-                                <Card className="bg-blue-600 !p-6 border-none text-white shadow-xl shadow-blue-200/50">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <Users size={16} className="text-blue-100" />
-                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100">Member Search</h3>
-                                    </div>
-                                    <div className="flex flex-row gap-2 mb-4 h-14"> 
-                                        <input 
-                                            placeholder="เบอร์โทรสมาชิก" 
-                                            value={memberPhone} 
-                                            onChange={e => {
-                                                const val = e.target.value.replace(/\D/g, '');
-                                                if (val.length <= 10) setMemberPhone(val);    
-                                            }} 
-                                            className="flex-1 min-w-0 bg-white text-slate-900 border-none rounded-2xl px-4 text-sm md:text-base font-bold outline-none shadow-inner" 
-                                        />
-                                        <button 
-                                            onClick={() => { 
-                                                if (memberPhone.length !== 10) return alert('⚠️ กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก');
-                                                const m = customers.find(c => c.phone === memberPhone); 
-                                                if(m) setCurrentMember(m); 
-                                                else alert('❌ ไม่พบสมาชิก'); 
-                                            }} 
-                                            className="bg-slate-900 text-white px-5 md:px-8 rounded-2xl font-black shadow-lg flex items-center justify-center shrink-0 active:scale-95 transition-all"
-                                        >
-                                            <Search size={20}/>
-                                        </button>
-                                    </div>
-                                    {currentMember && (
-                                        <div className="flex justify-between items-center p-4 bg-white rounded-2xl text-slate-800 border border-blue-400 animate-in zoom-in-95">
-                                            <div><p className="font-black text-sm">{currentMember.name}</p><p className="text-[10px] font-bold text-blue-600 italic">แต้มคงเหลือ: {(currentMember.points || 0).toLocaleString()}</p></div>
-                                            <div className="text-right">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase">ใช้แต้ม (฿)</span>
-                                                <input type="number" className="w-20 bg-slate-100 rounded-lg p-1.5 text-center font-black" value={pointsToUse} onChange={e => setPointsToUse(Math.max(0, Math.min(currentMember.points, Math.min(grandTotal, Number(e.target.value)))))} />
-                                            </div>
-                                        </div>
-                                    )}
-                                </Card>
-                            )}
-                            <Card className="!p-5 border-2 border-dashed border-slate-200 bg-white">
-                                <div className="flex items-center gap-2 mb-3 text-slate-400 text-[10px] font-black uppercase"><MessageSquare size={16}/> หมายเหตุ</div>
-                                <textarea className="w-full bg-slate-50 rounded-xl p-4 text-sm min-h-[60px] outline-none" placeholder="รายละเอียดบิล..." value={cartNote} onChange={e => setCartNote(e.target.value)} />
-                            </Card>
-                        </>
-                    ) : (
+        <div className="space-y-6">
+            {/* ช่องแสดงเงินรับมา */}
+            <div className="relative">
+                <label className="block text-center text-xs font-black text-slate-500 uppercase mb-3">รับเงินสด</label>
+                <div className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2rem] py-6 text-5xl font-black text-center outline-none">
+                    {receivedAmount.toLocaleString()}
+                </div>
+            </div>
+
+            {/* 🟢 ปุ่มทางลัดเพิ่มเงิน (Quick Cash) */}
+            <div className="grid grid-cols-4 gap-3">
+                {[20, 100, 500, 1000].map((cash) => (
+                    <button
+                        key={cash}
+                        onClick={() => setReceivedAmount(prev => prev + cash)}
+                        className="py-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-slate-700 hover:border-blue-500 hover:text-blue-600 transition-all active:scale-95 shadow-sm"
+                    >
+                        {cash}
+                    </button>
+                ))}
+            </div>
+
+            {/* 🟢 ปุ่มจ่ายพอดี และ ล้างยอด */}
+            <div className="grid grid-cols-2 gap-4">
+                <button
+                    onClick={() => setReceivedAmount(finalAmount)}
+                    className="py-4 bg-emerald-50 text-emerald-600 border-2 border-emerald-100 rounded-2xl font-black hover:bg-emerald-100 transition-all active:scale-95"
+                >
+                    จ่ายพอดี
+                </button>
+                <button
+                    onClick={() => setReceivedAmount(0)}
+                    className="py-4 bg-red-50 text-red-600 border-2 border-red-100 rounded-2xl font-black hover:bg-red-100 transition-all active:scale-95"
+                >
+                    ล้างยอด
+                </button>
+            </div>
+
+            {/* 🟢 ส่วนแสดงเงินทอน (ตามดีไซน์ใหม่) */}
+            <div className={`p-6 rounded-[2rem] text-center border-2 transition-all ${receivedAmount >= finalAmount ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">เงินทอน</p>
+                <p className={`text-5xl font-black ${receivedAmount >= finalAmount ? 'text-emerald-600' : 'text-slate-300'}`}>
+                    ฿{changeAmount.toLocaleString()}
+                </p>
+            </div>
+        </div>
+    </Card>
+) : (
                         <Card className="!p-8 border-2 border-blue-100 shadow-xl animate-in zoom-in-95">
                             <button onClick={() => setIsPaymentStep(false)} className="flex items-center gap-2 text-slate-400 font-bold text-sm mb-6 hover:text-slate-600 transition-all"><ArrowLeft size={18}/> ย้อนกลับไปตะกร้า</button>
                             <div className="mb-8 text-center">
@@ -298,25 +273,16 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                         ))}
                     </div>
                     <div className="p-8 bg-slate-50 border-t space-y-4">
-                        <div className="flex justify-between items-end">
-                            <div>
-                                <span className="text-xs font-black text-slate-400 uppercase block mb-1 tracking-widest">Grand Total</span>
-                                <span className="text-4xl font-black text-blue-600 tracking-tighter italic">฿{finalAmount.toLocaleString()}</span>
-                            </div>
+                        <div>
+                            <span className="text-xs font-black text-slate-400 uppercase block mb-1 tracking-widest">Grand Total</span>
+                            <span className="text-4xl font-black text-blue-600 tracking-tighter italic">฿{finalAmount.toLocaleString()}</span>
                         </div>
                         {type === 'IN' ? (
                             <Button className="w-full py-5 text-xl font-black shadow-xl" onClick={saveTransaction} disabled={cart.length === 0}><CheckCircle size={24} className="mr-2"/> ยืนยันรับสต็อก</Button>
                         ) : (
                             <div className="flex gap-3">
                                 {!isPaymentStep && (
-                                    <Button 
-                                        variant="secondary" 
-                                        className="flex-1 py-5 font-black bg-white border-2" 
-                                        onClick={holdCurrentBill} 
-                                        disabled={cart.length === 0}
-                                    >
-                                        <PauseCircle size={20} /> พักบิล
-                                    </Button>
+                                    <Button variant="secondary" className="flex-1 py-5 font-black bg-white border-2" onClick={holdCurrentBill} disabled={cart.length === 0}><PauseCircle size={20} /> พักบิล</Button>
                                 )}
                                 <Button className={`py-5 text-xl font-black shadow-xl ${isPaymentStep ? 'w-full' : 'flex-[2]'}`} onClick={() => {
                                     if(!isPaymentStep) setIsPaymentStep(true);
@@ -330,7 +296,7 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                 </aside>
             </div>
 
-            {/* 🟢 Modal รายการบิลที่พักไว้ (แก้ไขให้สมบูรณ์ขึ้น) */}
+            {/* 🟢 Modal รายการบิลที่พักไว้ */}
             {showHeldBills && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[120] flex items-center justify-center p-4 no-print">
                     <Card className="max-w-md w-full p-6 animate-in zoom-in-95 shadow-2xl border-none">
@@ -339,62 +305,35 @@ export default function TransactionView({ type, products, generateDocNo, handleS
                             <button onClick={() => setShowHeldBills(false)} className="text-slate-400 hover:text-slate-600 p-2"><X /></button>
                         </div>
                         <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                            {heldBills.length === 0 ? (
-                                <p className="text-center text-slate-400 py-10 font-bold">ไม่มีบิลที่พักไว้</p>
-                            ) : (
+                            {heldBills.length === 0 ? <p className="text-center text-slate-400 py-10 font-bold">ไม่มีบิลที่พักไว้</p> : 
                                 heldBills.map(bill => (
-                                    <div 
-                                        key={bill.id} 
-                                        className="p-4 border-2 border-slate-50 bg-slate-50/50 rounded-2xl hover:border-blue-500 hover:bg-white cursor-pointer transition-all group relative" 
-                                        onClick={() => recallBill(bill)}
-                                    >
+                                    <div key={bill.id} className="p-4 border-2 border-slate-50 bg-slate-50/50 rounded-2xl hover:border-blue-500 hover:bg-white cursor-pointer transition-all group relative" onClick={() => recallBill(bill)}>
                                         <div className="flex justify-between items-start mb-2">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">🕒 {new Date(bill.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} น.</span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase">🕒 {new Date(bill.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} น.</span>
                                             <span className="font-black text-blue-600">฿{(bill.totalAmount || 0).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between items-center">
                                             <p className="text-xs font-bold text-slate-600">{bill.cart.length} รายการ | {bill.currentMember?.name || 'ลูกค้าทั่วไป'}</p>
                                             <div className="flex gap-2">
-                                                <button 
-                                                    onClick={(e) => deleteHeldBill(e, bill.id)}
-                                                    className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                <button onClick={(e) => deleteHeldBill(e, bill.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
                                                 <PlayCircle className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" size={24}/>
                                             </div>
                                         </div>
                                     </div>
                                 ))
-                            )}
+                            }
                         </div>
                         <Button variant="secondary" className="w-full mt-4" onClick={() => setShowHeldBills(false)}>ปิด</Button>
                     </Card>
                 </div>
             )}
 
-            {/* ส่วนพิมพ์ใบเสร็จและแจ้งเตือน Stock ต่ำ */}
             {showReceipt && lastBill && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 no-print">
                     <Card className="max-w-md w-full p-8 text-center relative animate-in zoom-in-95 shadow-2xl overflow-y-auto max-h-[90vh]">
                         <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner"><CheckCircle size={48} /></div>
                         <h2 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">ทำรายการสำเร็จ</h2>
                         <p className="text-slate-400 text-sm mb-6">บิลเลขที่: {lastBill.docNo}</p>
-                        
-                        {lowStockAlerts.length > 0 && (
-                            <div className="mb-6 p-4 bg-orange-50 border border-orange-100 rounded-2xl text-left">
-                                <h4 className="text-[10px] font-black text-orange-600 uppercase mb-2 flex items-center gap-1"><AlertCircle size={14}/> สินค้าต่ำกว่าเกณฑ์สั่งซื้อ</h4>
-                                <ul className="space-y-1">
-                                    {lowStockAlerts.map((item, i) => (
-                                        <li key={i} className="text-xs font-bold text-slate-600 flex justify-between">
-                                            <span>• {item.name}</span>
-                                            <span className="text-orange-600 font-black">เหลือ: {item.remaining.toLocaleString()} (Min: {item.threshold})</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-
                         <div className="space-y-3">
                             <Button className="w-full py-5 text-lg font-black flex items-center justify-center gap-3 shadow-xl shadow-blue-200" onClick={() => window.print()}><Printer size={24} /> พิมพ์ใบเสร็จ</Button>
                             <Button variant="secondary" className="w-full py-4 text-slate-500 font-bold" onClick={handleFullReset}>เริ่มบิลใหม่</Button>
