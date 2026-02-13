@@ -4,22 +4,21 @@ import { X, Camera } from 'lucide-react';
 
 export default function ScannerModal({ isOpen, onClose, onScan }) {
   const scannerRef = useRef(null);
+  const lastScannedCode = useRef(null); // เก็บค่ารหัสล่าสุดที่สแกน
+  const lastScannedTime = useRef(0);    // เก็บเวลาล่าสุดที่สแกน
 
   useEffect(() => {
     if (!isOpen) return;
 
-    // หน่วงเวลาเล็กน้อยเพื่อให้ DOM พร้อม
     const timeoutId = setTimeout(() => {
-        // เคลียร์ Scanner ตัวเก่าถ้ามีค้างอยู่
         if (scannerRef.current) {
-            scannerRef.current.clear().catch(err => console.error("Failed to clear scanner", err));
+            scannerRef.current.clear().catch(err => console.error("Failed to clear", err));
         }
 
-        // ตั้งค่าตัวสแกน
         const scanner = new Html5QrcodeScanner(
             "reader",
             { 
-                fps: 10, 
+                fps: 15, // เพิ่มความไวในการตรวจจับ
                 qrbox: { width: 250, height: 250 },
                 aspectRatio: 1.0,
                 disableFlip: false, 
@@ -29,15 +28,26 @@ export default function ScannerModal({ isOpen, onClose, onScan }) {
         
         scannerRef.current = scanner;
 
-        // เริ่มทำงาน
         scanner.render(
             (decodedText) => {
-                onScan(decodedText);
-                scanner.clear().catch(err => console.error(err));
-                onClose();
+                const now = Date.now();
+                // 🟢 ระบบป้องกันการสแกนรหัสเดิมซ้ำภายใน 2 วินาที
+                // แต่ถ้าเป็นรหัสใหม่ (สินค้าคนละชิ้น) ให้สแกนได้ทันที
+                if (decodedText !== lastScannedCode.current || (now - lastScannedTime.current > 2000)) {
+                    
+                    onScan(decodedText); // ส่งรหัสไปเพิ่มในตะกร้า
+                    
+                    lastScannedCode.current = decodedText;
+                    lastScannedTime.current = now;
+
+                    // 🔊 ใส่การสั่นเบาๆ (ถ้าใช้บนมือถือ) เพื่อให้พนักงานรู้ว่าติดแล้ว
+                    if (window.navigator.vibrate) {
+                        window.navigator.vibrate(100);
+                    }
+                }
             },
             (errorMessage) => {
-                // กรณีอ่านไม่เจอ (ไม่ต้องทำอะไร)
+                // กรณีอ่านไม่เจอ (ข้ามไป)
             }
         );
     }, 100);
@@ -48,30 +58,36 @@ export default function ScannerModal({ isOpen, onClose, onScan }) {
             scannerRef.current.clear().catch(err => console.error("Cleanup error", err));
         }
     };
-  }, [isOpen, onScan, onClose]);
+  }, [isOpen, onScan]); // ❌ เอา onClose ออกจาก Dependency เพื่อไม่ให้รีเซ็ตกล้องบ่อย
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 animate-in fade-in duration-200">
-       <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden relative shadow-2xl">
-          <button 
-            onClick={onClose} 
-            className="absolute top-4 right-4 z-10 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition-colors"
-          >
-            <X size={20} className="text-gray-600"/>
-          </button>
-          <div className="p-6 text-center">
-              <h3 className="font-bold text-xl mb-1 text-gray-800 flex items-center justify-center gap-2">
-                <Camera className="text-blue-600" /> สแกน QR/Barcode
-              </h3>
-              <p className="text-gray-400 text-xs mb-4">วางรหัสให้อยู่ในกรอบสี่เหลี่ยม</p>
-              
-              <div id="reader" className="overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 min-h-[300px]"></div>
-              
-              <p className="mt-4 text-xs text-gray-400">รองรับทั้ง QR Code และ Barcode สินค้า</p>
-          </div>
-       </div>
+        <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden relative shadow-2xl">
+           {/* 🔴 ปุ่มปิดแบบแมนนวล (กดเมื่อสแกนครบทุกอย่างแล้ว) */}
+           <button 
+             onClick={onClose} 
+             className="absolute top-4 right-4 z-10 bg-red-50 hover:bg-red-100 p-2.5 rounded-full transition-colors group"
+           >
+             <X size={24} className="text-red-500 group-hover:scale-110 transition-transform"/>
+           </button>
+
+           <div className="p-6 text-center">
+               <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-3 animate-bounce">
+                  <Camera size={28} />
+               </div>
+               <h3 className="font-bold text-xl mb-1 text-gray-800">สแกนต่อเนื่อง</h3>
+               <p className="text-gray-400 text-xs mb-4">กล้องจะไม่ปิดจนกว่าจะกดปุ่มกากบาท</p>
+               
+               <div id="reader" className="overflow-hidden rounded-2xl border-2 border-blue-50 bg-gray-50 min-h-[300px]"></div>
+               
+               <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold text-emerald-500 bg-emerald-50 py-2 rounded-xl">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
+                  ระบบพร้อมสแกนชิ้นต่อไปได้ทันที
+               </div>
+           </div>
+        </div>
     </div>
   );
 }
