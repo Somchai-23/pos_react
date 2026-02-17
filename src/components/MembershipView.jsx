@@ -1,37 +1,69 @@
 import React, { useState } from 'react';
-import { UserPlus, Settings, Trash2, Search, Save, AlertCircle } from 'lucide-react';
+import { UserPlus, Settings, Trash2, Search, Save, AlertCircle, Edit3, XCircle } from 'lucide-react';
 import { Card, Button, Input } from './UIComponents';
 import { db } from '../firebase';
-import { collection, addDoc, doc, deleteDoc, setDoc } from "firebase/firestore";
+import { collection, addDoc, doc, deleteDoc, setDoc, updateDoc } from "firebase/firestore";
 
 export default function MembershipView({ customers, settings, setSettings }) {
     const [newMember, setNewMember] = useState({ name: '', phone: '' });
+    const [editingMemberId, setEditingMemberId] = useState(null); // 🟢 เก็บ ID สมาชิกที่กำลังแก้ไข
     const [activeSubTab, setActiveSubTab] = useState('list');
     const [searchTerm, setSearchTerm] = useState('');
     const [tempSettings, setTempSettings] = useState({ ...settings });
 
-    const handleAddMember = async () => {
-        if (!newMember.name || !newMember.phone) return alert('กรุณากรอกข้อมูลให้ครบ');
-        
-        // 🟢 ตรวจสอบความยาวเบอร์โทรศัพท์ก่อนบันทึก
-        if (newMember.phone.length !== 10) {
-            return alert('⚠️ กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลักครับ');
-        }
+    // --- 🟢 ฟังก์ชันเริ่มโหมดแก้ไข ---
+    const startEdit = (customer) => {
+        setEditingMemberId(customer.id);
+        setNewMember({ name: customer.name, phone: customer.phone });
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // เลื่อนจอขึ้นไปที่ฟอร์ม
+    };
 
-        if (customers.find(c => c.phone === newMember.phone)) {
-            return alert('❌ เบอร์โทรนี้เป็นสมาชิกอยู่แล้ว');
-        }
-        
-        try {
+    // --- 🟢 ฟังก์ชันยกเลิกโหมดแก้ไข ---
+    const cancelEdit = () => {
+        setEditingMemberId(null);
+        setNewMember({ name: '', phone: '' });
+    };
+
+    const handleAddOrUpdateMember = async () => {
+    // 1. ตรวจสอบข้อมูลเบื้องต้น
+    if (!newMember.name || !newMember.phone) return alert('กรุณากรอกข้อมูลให้ครบ');
+    if (newMember.phone.length !== 10) return alert('⚠️ กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก');
+
+    // 2. ค้นหาว่ามีเบอร์นี้อยู่ในระบบแล้วหรือยัง (เช็คจากข้อมูล Real-time ใน State)
+    const duplicate = customers.find(c => c.phone === newMember.phone);
+
+    try {
+        if (editingMemberId) {
+            // --- 🟢 กรณี: แก้ไขข้อมูลสมาชิกเดิม ---
+            // ตรวจสอบว่าเบอร์นี้เป็นของ "คนอื่น" หรือไม่ (ถ้าเป็นของตัวเอง แก้ไขได้ปกติ)
+            if (duplicate && duplicate.id !== editingMemberId) {
+                return alert(`❌ ไม่สามารถใช้เบอร์นี้ได้: เบอร์นี้ถูกใช้งานโดยคุณ "${duplicate.name}" แล้ว`);
+            }
+
+            const memberRef = doc(db, "customers", editingMemberId);
+            await updateDoc(memberRef, {
+                name: newMember.name,
+                phone: newMember.phone
+            });
+            alert('✅ อัปเดตข้อมูลสมาชิกเรียบร้อย');
+        } else {
+            // --- ⚪ กรณี: ลงทะเบียนสมาชิกใหม่ ---
+            if (duplicate) {
+                return alert(`❌ เบอร์โทรนี้เป็นสมาชิกอยู่แล้ว (คุณ ${duplicate.name})`);
+            }
+
             await addDoc(collection(db, "customers"), {
                 name: newMember.name, 
                 phone: newMember.phone, 
                 points: 0, 
                 lastActivity: new Date().toISOString()
             });
-            setNewMember({ name: '', phone: '' });
             alert('✅ สมัครสมาชิกสำเร็จ');
-        } catch (e) { alert('❌ Error: ' + e.message); }
+        }
+        cancelEdit(); // ล้างฟอร์มและออกจากโหมดแก้ไข
+    } catch (e) { 
+        alert('❌ ไม่สามารถดำเนินการได้: ' + e.message); 
+    }
     };
 
     const handleDeleteMember = async (id, name) => {
@@ -69,25 +101,36 @@ export default function MembershipView({ customers, settings, setSettings }) {
 
             {activeSubTab === 'list' ? (
                 <div className="space-y-4 animate-in fade-in duration-300">
-                    <Card className="p-5 border-blue-50 shadow-sm">
-                        <h3 className="font-bold mb-4 flex items-center gap-2 text-blue-900"><UserPlus size={18}/> ลงทะเบียนสมาชิกใหม่</h3>
+                    {/* ฟอร์ม: รองรับทั้งเพิ่มใหม่และแก้ไข */}
+                    <Card className={`p-5 border-2 shadow-sm transition-all ${editingMemberId ? 'border-orange-200 bg-orange-50/30' : 'border-blue-50'}`}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className={`font-bold flex items-center gap-2 ${editingMemberId ? 'text-orange-700' : 'text-blue-900'}`}>
+                                {editingMemberId ? <><Edit3 size={18}/> แก้ไขข้อมูลสมาชิก</> : <><UserPlus size={18}/> ลงทะเบียนสมาชิกใหม่</>}
+                            </h3>
+                            {editingMemberId && (
+                                <button onClick={cancelEdit} className="text-xs font-bold text-orange-600 flex items-center gap-1 hover:underline">
+                                    <XCircle size={14}/> ยกเลิกการแก้ไข
+                                </button>
+                            )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <Input label="ชื่อ-นามสกุล" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} placeholder="ระบุชื่อลูกค้า" />
-                            
-                            {/* 🟢 อัปเดตช่องเบอร์โทรศัพท์: บังคับตัวเลข 10 หลัก */}
                             <Input 
                                 label="เบอร์โทรศัพท์" 
                                 value={newMember.phone} 
                                 onChange={e => {
-                                    const val = e.target.value.replace(/\D/g, ''); // กรองตัวหนังสือออก
-                                    if (val.length <= 10) {
-                                        setNewMember({...newMember, phone: val});
-                                    }
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    if (val.length <= 10) setNewMember({...newMember, phone: val});
                                 }} 
                                 placeholder="08xxxxxxxx" 
                             />
                         </div>
-                        <Button onClick={handleAddMember} className="w-full mt-4 py-4 font-black shadow-lg shadow-blue-100">ยืนยันการสมัครสมาชิก</Button>
+                        <Button 
+                            onClick={handleAddOrUpdateMember} 
+                            className={`w-full mt-4 py-4 font-black shadow-lg ${editingMemberId ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-100' : 'shadow-blue-100'}`}
+                        >
+                            {editingMemberId ? 'บันทึกการเปลี่ยนแปลง' : 'ยืนยันการสมัครสมาชิก'}
+                        </Button>
                     </Card>
 
                     <div className="relative">
@@ -108,12 +151,18 @@ export default function MembershipView({ customers, settings, setSettings }) {
                                             <p className="text-xs text-slate-400 font-bold">{c.phone}</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="text-right">
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-right mr-2">
                                             <p className="text-blue-600 font-black text-lg">{(c.points || 0).toLocaleString()}</p>
                                             <p className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Points</p>
                                         </div>
-                                        <button onClick={() => handleDeleteMember(c.id, c.name)} className="p-2 text-slate-200 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={20} /></button>
+                                        {/* 🟢 ปุ่มแก้ไข */}
+                                        <button onClick={() => startEdit(c)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100">
+                                            <Edit3 size={18} />
+                                        </button>
+                                        <button onClick={() => handleDeleteMember(c.id, c.name)} className="p-2 text-slate-200 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                            <Trash2 size={18} />
+                                        </button>
                                     </div>
                                 </div>
                             ))
@@ -121,6 +170,7 @@ export default function MembershipView({ customers, settings, setSettings }) {
                     </div>
                 </div>
             ) : (
+                /* ... ส่วนตั้งค่าระบบแต้มคงเดิม ... */
                 <div className="space-y-4 animate-in fade-in duration-300">
                     <Card className="p-6 border-none shadow-xl shadow-blue-50">
                         <div className="flex items-center gap-3 mb-6">
@@ -132,12 +182,10 @@ export default function MembershipView({ customers, settings, setSettings }) {
                         </div>
 
                         <div className="space-y-6">
-
                             <div className="space-y-4">
                                 <Input label="ยอดซื้อกี่บาท ได้ 1 แต้ม?" type="number" value={tempSettings.bahtPerPoint} onChange={e => setTempSettings({...tempSettings, bahtPerPoint: Number(e.target.value)})} />
                                 <Input label="อายุของแต้ม (วัน) [0 = ไม่มีวันหมดอายุ]" type="number" value={tempSettings.pointExpiryDays} onChange={e => setTempSettings({...tempSettings, pointExpiryDays: Number(e.target.value)})} />
                             </div>
-
                             <div className="pt-4 border-t border-slate-100">
                                 <Button onClick={handleSaveSettings} className="w-full py-5 rounded-2xl text-base font-black shadow-lg shadow-blue-100 flex items-center justify-center gap-2"><Save size={20} /> บันทึกการตั้งค่าใหม่</Button>
                                 <button onClick={() => setTempSettings({...settings})} className="w-full mt-3 text-xs font-bold text-slate-400 hover:text-slate-600 transition-all">ล้างค่าที่แก้ไข</button>

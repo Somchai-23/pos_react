@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, QrCode, ChevronRight, Save, Wand2, Printer, Trash2, Lock, Eye, AlertCircle, Box, PackageX } from 'lucide-react';
+import { Plus, Search, QrCode, ChevronRight, Save, Wand2, Printer, Trash2, Lock, Eye, AlertCircle, Box, PackageX, LayoutGrid } from 'lucide-react';
 import QRCode from "react-qr-code";
 import { Button, Input, Card, ImageUpload } from './UIComponents';
 import { db } from '../firebase'; 
@@ -10,19 +10,36 @@ export default function ProductView({ products, viewState, setViewState, handleS
     const [tempProduct, setTempProduct] = useState({});
     const [printSize, setPrintSize] = useState(150); 
     const [printQty, setPrintQty] = useState(1);
+    
+    // 🟢 1. เพิ่ม State สำหรับการกรอง (all, low, out)
+    const [filterType, setFilterType] = useState('all');
 
     const isOwner = userRole === 'OWNER';
 
-    // 🟢 1. คำนวณสรุปสถานะ (ฟังก์ชันใหม่ที่เพิ่มเข้ามา)
-    const lowStockCount = products.filter(p => {
+    // 🟢 2. คำนวณสรุปสถานะ
+    const lowStockItems = products.filter(p => {
         const stock = Number(p.stock || 0);
         const min = Number(p.minStock || 5);
         return stock > 0 && stock <= min;
-    }).length;
+    });
 
-    const outOfStockCount = products.filter(p => Number(p.stock || 0) <= 0).length;
+    const outOfStockItems = products.filter(p => Number(p.stock || 0) <= 0);
 
-    // 🔵 2. คงฟังก์ชันสุ่มรหัสเดิมไว้
+    // 🟢 3. ตรรกะการกรองสินค้า (Search + Status Filter)
+    const filteredProducts = products.filter(p => {
+        // กรองด้วยคำค้นหา
+        const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.code?.includes(searchTerm);
+        
+        // กรองด้วยสถานะ
+        const stock = Number(p.stock || 0);
+        const min = Number(p.minStock || 5);
+        let matchesFilter = true;
+        if (filterType === 'low') matchesFilter = stock > 0 && stock <= min;
+        if (filterType === 'out') matchesFilter = stock <= 0;
+
+        return matchesSearch && matchesFilter;
+    });
+
     const handleGenerateRandomCode = () => {
         if (!isOwner) return;
         let newCode = '';
@@ -35,12 +52,8 @@ export default function ProductView({ products, viewState, setViewState, handleS
         setTempProduct({ ...tempProduct, code: newCode });
     };
 
-    // 🔵 3. คงฟังก์ชันพิมพ์ QR เดิมไว้
-    const handlePrintQR = () => {
-        window.print();
-    };
+    const handlePrintQR = () => { window.print(); };
 
-    // 🔵 4. คงฟังก์ชันบันทึกข้อมูลเดิมไว้
     const handleSaveProduct = async () => {
         if (!isOwner) return;
         if (!tempProduct.name || !tempProduct.code) return alert('⚠️ กรุณากรอกชื่อและรหัสสินค้าให้ครบ');
@@ -64,9 +77,7 @@ export default function ProductView({ products, viewState, setViewState, handleS
             }
             alert('✅ บันทึกข้อมูลสินค้าเรียบร้อย');
             setViewState('list');
-        } catch (error) {
-            alert('❌ ไม่สามารถบันทึกได้: ' + error.message);
-        }
+        } catch (error) { alert('❌ ไม่สามารถบันทึกได้: ' + error.message); }
     };
 
     if (viewState === 'form') {
@@ -120,12 +131,7 @@ export default function ProductView({ products, viewState, setViewState, handleS
                 </div>
 
                 <Card className="no-print">
-                    <ImageUpload 
-                        value={tempProduct.img} 
-                        onChange={isOwner ? (newImg) => setTempProduct({ ...tempProduct, img: newImg }) : undefined} 
-                        disabled={!isOwner}
-                    />
-                    
+                    <ImageUpload value={tempProduct.img} onChange={isOwner ? (newImg) => setTempProduct({ ...tempProduct, img: newImg }) : undefined} disabled={!isOwner} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
                         <div className="col-span-full">
                             <div className="flex items-end gap-2">
@@ -177,87 +183,114 @@ export default function ProductView({ products, viewState, setViewState, handleS
 
     return (
         <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto pb-24">
-            {/* 🟢 ส่วน Dashboard สรุปสต็อก (ฟังก์ชันใหม่) */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 no-print">
-                <div className="bg-orange-50 border border-orange-100 p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 bg-orange-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200"><Box size={24}/></div>
+            {/* 🟢 ส่วน Dashboard และตัวกรองสินค้า */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 no-print">
+                
+                <button onClick={() => setFilterType('all')} 
+                        className={`p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4 transition-all border-2 text-left ${filterType === 'all' ? 'bg-blue-600 text-white border-blue-400 scale-105 shadow-blue-200' : 'bg-white border-gray-100 text-slate-800 hover:border-blue-200'}`}>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${filterType === 'all' ? 'bg-white text-blue-600' : 'bg-blue-500 text-white'}`}><LayoutGrid size={24}/></div>
                     <div>
-                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">ใกล้หมดคลัง</p>
-                        <p className="text-2xl font-black text-slate-800">{lowStockCount} <span className="text-xs">รายการ</span></p>
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${filterType === 'all' ? 'text-blue-100' : 'text-blue-600'}`}>สินค้าทั้งหมด</p>
+                        <p className="text-2xl font-black">{products.length} <span className="text-xs">รายการ</span></p>
                     </div>
-                </div>
-                <div className="bg-red-50 border border-red-100 p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 bg-red-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-red-200"><PackageX size={24}/></div>
+                </button>
+
+                {/* ใกล้หมดคลัง */}
+                <button onClick={() => setFilterType('low')} 
+                        className={`p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4 transition-all border-2 text-left ${filterType === 'low' ? 'bg-orange-500 text-white border-orange-300 scale-105 shadow-orange-200' : 'bg-orange-50 border-orange-100 text-orange-800 hover:border-orange-300'}`}>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${filterType === 'low' ? 'bg-white text-orange-600' : 'bg-orange-500 text-white'}`}><Box size={24}/></div>
                     <div>
-                        <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">หมดสต็อก</p>
-                        <p className="text-2xl font-black text-slate-800">{outOfStockCount} <span className="text-xs">รายการ</span></p>
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${filterType === 'low' ? 'text-orange-100' : 'text-orange-600'}`}>ใกล้หมดคลัง</p>
+                        <p className="text-2xl font-black">{lowStockItems.length} <span className="text-xs">รายการ</span></p>
                     </div>
-                </div>
+                </button>
+
+                {/* หมดสต็อก */}
+                <button onClick={() => setFilterType('out')} 
+                        className={`p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4 transition-all border-2 text-left ${filterType === 'out' ? 'bg-red-500 text-white border-red-300 scale-105 shadow-red-200' : 'bg-red-50 border-red-100 text-red-800 hover:border-red-300'}`}>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${filterType === 'out' ? 'bg-white text-red-600' : 'bg-red-500 text-white'}`}><PackageX size={24}/></div>
+                    <div>
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${filterType === 'out' ? 'text-red-100' : 'text-red-600'}`}>หมดสต็อก</p>
+                        <p className="text-2xl font-black">{outOfStockItems.length} <span className="text-xs">รายการ</span></p>
+                    </div>
+                </button>
             </div>
 
-            <div className="flex justify-between items-center no-print pt-4">
-                <h1 className="text-3xl font-black text-slate-800 tracking-tight">คลังสินค้า</h1>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print pt-4">
+                <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight italic">รายการสินค้า</h1>
+                    {filterType !== 'all' && (
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter shadow-sm animate-bounce ${
+                            filterType === 'low' ? 'bg-orange-100 text-orange-600 border border-orange-200' : 'bg-red-100 text-red-600 border border-red-200'
+                        }`}>Filtering: {filterType}</span>
+                    )}
+                </div>
                 {isOwner && (
                     <Button onClick={() => { setTempProduct({ img: '📦', minStock: 5, buyPrice: 0, sellPrice: 0, stock: 0 }); setViewState('form'); }}>
-                        <Plus size={20} /> <span className="hidden sm:inline">เพิ่มสินค้าใหม่</span>
+                        <Plus size={20} /> เพิ่มสินค้าใหม่
                     </Button>
                 )}
             </div>
 
             <div className="relative no-print">
-                <input type="text" placeholder="ค้นหาชื่อหรือรหัสสินค้า..." className="w-full bg-white border border-gray-200 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-4 focus:ring-blue-50 outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <input type="text" placeholder={`ค้นหาในรายการ ${filterType === 'all' ? 'ทั้งหมด' : (filterType === 'low' ? 'ใกล้หมด' : 'หมดสต็อก')}...`} className="w-full bg-white border border-gray-200 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-4 focus:ring-blue-50 outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 <Search className="absolute left-4 top-4 text-gray-400" size={20} />
             </div>
 
+            {/* รายการสินค้าที่ผ่านการกรองแล้ว */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 no-print">
-                {products.filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.code?.includes(searchTerm)).map(p => {
-                    const currentStock = Number(p.stock || 0);
-                    const minStock = Number(p.minStock || 5);
-                    const isOutOfStock = currentStock <= 0;
-                    const isLowStock = currentStock > 0 && currentStock <= minStock;
+                {filteredProducts.length > 0 ? (
+                    filteredProducts.map(p => {
+                        const currentStock = Number(p.stock || 0);
+                        const minStock = Number(p.minStock || 5);
+                        const isOutOfStock = currentStock <= 0;
+                        const isLowStock = currentStock > 0 && currentStock <= minStock;
 
-                    return (
-                        <div key={p.id} onClick={() => { setTempProduct(p); setViewState('form'); }} 
-                             className={`bg-white p-5 rounded-[2.5rem] border shadow-sm flex flex-col gap-4 group relative transition-all cursor-pointer overflow-hidden ${
-                                isOutOfStock ? 'border-red-200 bg-red-50/20' : 
-                                isLowStock ? 'border-orange-200 bg-orange-50/10' : 'border-gray-100 hover:border-blue-300'
-                             }`}>
-                            
-                            <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center overflow-hidden border border-gray-100 group-hover:scale-105 transition-transform">
-                                    {p.img && p.img.startsWith('data:') ? <img src={p.img} alt="Product" className="w-full h-full object-cover" /> : <span className="text-3xl">{p.img}</span>}
+                        return (
+                            <div key={p.id} onClick={() => { setTempProduct(p); setViewState('form'); }} 
+                                 className={`bg-white p-5 rounded-[2.5rem] border shadow-sm flex flex-col gap-4 group relative transition-all cursor-pointer overflow-hidden ${
+                                    isOutOfStock ? 'border-red-200 bg-red-50/20' : 
+                                    isLowStock ? 'border-orange-200 bg-orange-50/10' : 'border-gray-100 hover:border-blue-300'
+                                 }`}>
+                                
+                                <div className="flex items-center gap-4">
+                                    <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center overflow-hidden border border-gray-100 group-hover:scale-105 transition-transform">
+                                        {p.img && p.img.startsWith('data:') ? <img src={p.img} alt="Product" className="w-full h-full object-cover" /> : <span className="text-3xl">{p.img}</span>}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-black text-slate-800 truncate text-base">{p.name}</h3>
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-mono font-bold text-slate-400">{p.code}</span>
+                                    </div>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="font-black text-slate-800 truncate text-base">{p.name}</h3>
-                                    <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-mono font-bold text-slate-400">{p.code}</span>
+                                
+                                <div className="flex justify-between items-end border-t pt-4 border-slate-50">
+                                    <div>
+                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-black">คงเหลือ</p>
+                                        <span className={`text-xl font-black ${isOutOfStock ? 'text-red-600' : isLowStock ? 'text-orange-500' : 'text-blue-600'}`}>
+                                            {currentStock.toLocaleString()} <span className="text-[10px] text-slate-300 uppercase">{p.unit}</span>
+                                        </span>
+                                        {isLowStock && <p className="text-[9px] font-bold text-orange-400 uppercase mt-1 flex items-center gap-1"><AlertCircle size={10}/> Low Stock</p>}
+                                        {isOutOfStock && <p className="text-[9px] font-bold text-red-500 uppercase mt-1">❌ Out of Stock</p>}
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-black">ราคาขาย</p>
+                                        <span className="text-xl font-black text-slate-800">฿{Number(p.sellPrice || 0).toLocaleString()}</span>
+                                    </div>
                                 </div>
+                                {isOwner && (
+                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id); }} className="absolute top-4 right-4 p-2 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                        <Trash2 size={18} />
+                                    </button>
+                                )}
                             </div>
-                            
-                            <div className="flex justify-between items-end border-t pt-4 border-slate-50">
-                                <div>
-                                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-black">คงเหลือ</p>
-                                    <span className={`text-xl font-black ${
-                                        isOutOfStock ? 'text-red-600' : 
-                                        isLowStock ? 'text-orange-500 animate-pulse' : 'text-blue-600'
-                                    }`}>
-                                        {currentStock} <span className="text-[10px] text-slate-300 uppercase">{p.unit}</span>
-                                    </span>
-                                    {isLowStock && <p className="text-[9px] font-bold text-orange-400 uppercase mt-1 flex items-center gap-1"><AlertCircle size={10}/> Low Stock</p>}
-                                    {isOutOfStock && <p className="text-[9px] font-bold text-red-500 uppercase mt-1">❌ Out of Stock</p>}
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-black">ราคาขาย</p>
-                                    <span className="text-xl font-black text-slate-800">฿{Number(p.sellPrice || 0).toLocaleString()}</span>
-                                </div>
-                            </div>
-                            {isOwner && (
-                                <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id); }} className="absolute top-4 right-4 p-2 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                                    <Trash2 size={18} />
-                                </button>
-                            )}
-                        </div>
-                    );
-                })}
+                        );
+                    })
+                ) : (
+                    <div className="col-span-full py-20 text-center bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200">
+                        <PackageX size={48} className="mx-auto text-gray-300 mb-4" />
+                        <p className="text-gray-500 font-bold uppercase tracking-widest">ไม่พบรายการสินค้าในหมวดหมู่นี้</p>
+                    </div>
+                )}
             </div>
         </div>
     );
