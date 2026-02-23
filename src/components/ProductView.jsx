@@ -61,6 +61,7 @@ export default function ProductView({ products, viewState, setViewState, handleS
         const productData = { 
             name: tempProduct.name,
             code: tempProduct.code,
+            shopId: user.shopId,
             img: tempProduct.img || '📦',
             unit: tempProduct.unit || 'ชิ้น',
             sellPrice: Number(tempProduct.sellPrice || 0),

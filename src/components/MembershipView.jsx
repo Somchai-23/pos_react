@@ -55,6 +55,7 @@ export default function MembershipView({ customers, settings, setSettings }) {
             await addDoc(collection(db, "customers"), {
                 name: newMember.name, 
                 phone: newMember.phone, 
+                shopId: user.shopId,
                 points: 0, 
                 lastActivity: new Date().toISOString()
             });

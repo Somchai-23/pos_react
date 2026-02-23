@@ -104,9 +104,14 @@ export default function SalesTerminal({ products, generateDocNo, handleScanQR, c
                 }
                 const billRef = doc(collection(db, "transactions"));
                 const billData = {
-                    type: 'OUT', docNo: currentDocNo, date: new Date().toISOString(),
-                    items: cart, totalAmount: finalAmount, receivedAmount: Number(receivedAmount),
-                    changeAmount: Number(changeAmount), pointsUsed: Number(pointsToUse),
+                    type: 'OUT', 
+                    docNo: currentDocNo,
+                    shopId: user.shopId, 
+                    date: new Date().toISOString(),
+                    items: cart, totalAmount: finalAmount, 
+                    receivedAmount: Number(receivedAmount),
+                    changeAmount: Number(changeAmount), 
+                    pointsUsed: Number(pointsToUse),
                     memberId: currentMember?.id || null, note: cartNote, createdAt: new Date()
                 };
                 transaction.set(billRef, billData);
