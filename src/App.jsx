@@ -187,10 +187,18 @@ export default function POSStockApp() {
 
         <main className="flex-1 overflow-y-auto bg-slate-50/50 scrollbar-hide">
           <div className="max-w-[1600px] mx-auto pb-32 md:pb-8">
+            
+            {/* 1. หน้าคลังสินค้า: เพิ่ม user={user} 🟢 */}
             {activeTab === 'products' && (
               <ProductView 
-                products={products} setProducts={setProducts} viewState={viewState} setViewState={setViewState} 
-                calculateStock={calculateStock} handleScanQR={handleScanQR} userRole={user.role}
+                user={user} 
+                products={products} 
+                setProducts={setProducts} 
+                viewState={viewState} 
+                setViewState={setViewState} 
+                calculateStock={calculateStock} 
+                handleScanQR={handleScanQR} 
+                userRole={user.role}
                 handleDeleteProduct={async (id) => {
                     if(window.confirm('ยืนยันการลบสินค้าจากคลาวด์?')) {
                         await deleteDoc(doc(db, "products", id));
@@ -199,10 +207,20 @@ export default function POSStockApp() {
               />
             )}
             
-            {activeTab === 'members' && <MembershipView customers={customers} settings={memberSettings} setSettings={setMemberSettings} />}
+            {/* 2. หน้าสมาชิก: เพิ่ม user={user} 🟢 */}
+            {activeTab === 'members' && (
+              <MembershipView 
+                user={user}
+                customers={customers} 
+                settings={memberSettings} 
+                setSettings={setMemberSettings} 
+              />
+            )}
             
+            {/* 3. หน้าขายสินค้า: เพิ่ม user={user} 🟢 */}
             {activeTab === 'sell' && (
               <SalesTerminal 
+                user={user}
                 products={products}
                 generateDocNo={generateDocNo}
                 handleScanQR={handleScanQR}
@@ -214,8 +232,10 @@ export default function POSStockApp() {
               />
             )}
 
+            {/* 4. หน้าซื้อสต็อกเข้า: เพิ่ม user={user} 🟢 */}
             {activeTab === 'buy' && (
               <StockIntake 
+                user={user}
                 products={products}
                 generateDocNo={generateDocNo}
                 handleScanQR={handleScanQR}
