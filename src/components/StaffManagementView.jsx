@@ -41,40 +41,23 @@ export default function StaffManagementView({ users, setUsers, currentUser }) {
         }
     };
 
-    // --- 4. ฟังก์ชันบันทึกข้อมูล (ทั้งเพิ่มใหม่และแก้ไข) ---
-    const handleSaveStaff = async () => {
-        if (!newStaff.name || !newStaff.username || !newStaff.password) {
-            return alert('⚠️ กรุณากรอกข้อมูลพนักงานให้ครบทุกช่อง');
-        }
+const handleSaveStaff = async () => {
+    // 🟢 ตรวจสอบว่า PIN ต้องเป็น 4 หลักพอดี (หรือตามที่คุณต้องการ)
+    if (newStaff.password.length !== 4) {
+        return alert('⚠️ รหัสพนักงานต้องมี 4 หลักเท่านั้น');
+    }
 
-        try {
-            if (editingStaffId) {
-                // 🔵 กรณีแก้ไข (Update)
-                const userRef = doc(db, "users", editingStaffId);
-                await updateDoc(userRef, {
-                    ...newStaff,
-                    updatedAt: new Date().toISOString()
-                });
-                alert('✅ อัปเดตข้อมูลพนักงานเรียบร้อย');
-                setEditingStaffId(null);
-            } else {
-                // ⚪ กรณีเพิ่มใหม่ (Create)
-                const isDuplicate = users?.some(u => u.username === newStaff.username);
-                if (isDuplicate) return alert('❌ ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว');
-
-                await addDoc(collection(db, "users"), {
-                    ...newStaff,
-                    shopId: currentUser.shopId,
-                    createdAt: new Date().toISOString()
-                });
-                alert('✅ เพิ่มพนักงานลงระบบ Cloud เรียบร้อย');
-            }
-            
-            setNewStaff({ name: '', username: '', password: '', role: 'STAFF' });
-        } catch (error) {
-            alert('❌ เกิดข้อผิดพลาด: ' + error.message);
-        }
-    };
+    try {
+        await addDoc(collection(db, "users"), {
+            ...newStaff,
+            shopId: currentUser.shopId,     // ผูกกับรหัสร้าน
+            ownerEmail: currentUser.email, // 🟢 สำคัญ: ใช้อีเมลเจ้าของร้านเป็น Namespace
+            createdAt: new Date().toISOString()
+        });
+        alert('✅ เพิ่มพนักงานเรียบร้อย (รหัส 4 หลัก)');
+        setNewStaff({ name: '', username: '', password: '', role: 'STAFF' });
+    } catch (error) { /* ... error handling ... */ }
+};
 
     const handleDeleteStaff = async (id, staffName) => {
         if (staffName === (currentUser?.name || '')) return alert('❌ คุณไม่สามารถลบตัวเองได้');
