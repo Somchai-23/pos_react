@@ -1,41 +1,37 @@
 import React, { useState } from 'react';
-import { UserPlus, Settings, Trash2, Search, Save, AlertCircle, Edit3, XCircle } from 'lucide-react';
+// 🟢 จุดแก้ไขที่ 1: เพิ่ม Users เข้าไปในรายการ Import
+import { UserPlus, Settings, Trash2, Search, Save, AlertCircle, Edit3, XCircle, Users } from 'lucide-react'; 
 import { Card, Button, Input } from './UIComponents';
 import { db } from '../firebase';
 import { collection, addDoc, doc, deleteDoc, setDoc, updateDoc } from "firebase/firestore";
 
-export default function MembershipView({ customers, settings, setSettings }) {
+// 🟢 จุดแก้ไขที่ 2: เพิ่ม 'user' เข้ามาใน { ... } เพื่อให้ดึง shopId ได้
+export default function MembershipView({ user, customers, settings, setSettings }) {
     const [newMember, setNewMember] = useState({ name: '', phone: '' });
-    const [editingMemberId, setEditingMemberId] = useState(null); // 🟢 เก็บ ID สมาชิกที่กำลังแก้ไข
+    const [editingMemberId, setEditingMemberId] = useState(null); 
     const [activeSubTab, setActiveSubTab] = useState('list');
     const [searchTerm, setSearchTerm] = useState('');
     const [tempSettings, setTempSettings] = useState({ ...settings });
 
-    // --- 🟢 ฟังก์ชันเริ่มโหมดแก้ไข ---
     const startEdit = (customer) => {
         setEditingMemberId(customer.id);
         setNewMember({ name: customer.name, phone: customer.phone });
-        window.scrollTo({ top: 0, behavior: 'smooth' }); // เลื่อนจอขึ้นไปที่ฟอร์ม
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // --- 🟢 ฟังก์ชันยกเลิกโหมดแก้ไข ---
     const cancelEdit = () => {
         setEditingMemberId(null);
         setNewMember({ name: '', phone: '' });
     };
 
     const handleAddOrUpdateMember = async () => {
-    // 1. ตรวจสอบข้อมูลเบื้องต้น
     if (!newMember.name || !newMember.phone) return alert('กรุณากรอกข้อมูลให้ครบ');
     if (newMember.phone.length !== 10) return alert('⚠️ กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก');
 
-    // 2. ค้นหาว่ามีเบอร์นี้อยู่ในระบบแล้วหรือยัง (เช็คจากข้อมูล Real-time ใน State)
     const duplicate = customers.find(c => c.phone === newMember.phone);
 
     try {
         if (editingMemberId) {
-            // --- 🟢 กรณี: แก้ไขข้อมูลสมาชิกเดิม ---
-            // ตรวจสอบว่าเบอร์นี้เป็นของ "คนอื่น" หรือไม่ (ถ้าเป็นของตัวเอง แก้ไขได้ปกติ)
             if (duplicate && duplicate.id !== editingMemberId) {
                 return alert(`❌ ไม่สามารถใช้เบอร์นี้ได้: เบอร์นี้ถูกใช้งานโดยคุณ "${duplicate.name}" แล้ว`);
             }
@@ -47,7 +43,6 @@ export default function MembershipView({ customers, settings, setSettings }) {
             });
             alert('✅ อัปเดตข้อมูลสมาชิกเรียบร้อย');
         } else {
-            // --- ⚪ กรณี: ลงทะเบียนสมาชิกใหม่ ---
             if (duplicate) {
                 return alert(`❌ เบอร์โทรนี้เป็นสมาชิกอยู่แล้ว (คุณ ${duplicate.name})`);
             }
@@ -55,13 +50,13 @@ export default function MembershipView({ customers, settings, setSettings }) {
             await addDoc(collection(db, "customers"), {
                 name: newMember.name, 
                 phone: newMember.phone, 
-                shopId: user.shopId,
+                shopId: user.shopId, // ✅ ตอนนี้โปรแกรมรู้จัก user แล้ว
                 points: 0, 
                 lastActivity: new Date().toISOString()
             });
             alert('✅ สมัครสมาชิกสำเร็จ');
         }
-        cancelEdit(); // ล้างฟอร์มและออกจากโหมดแก้ไข
+        cancelEdit();
     } catch (e) { 
         alert('❌ ไม่สามารถดำเนินการได้: ' + e.message); 
     }
@@ -80,7 +75,11 @@ export default function MembershipView({ customers, settings, setSettings }) {
         if (window.confirm('ยืนยันการเปลี่ยนเงื่อนไขการให้แต้มสมาชิก?')) {
             try {
                 setSettings(tempSettings);
-                await setDoc(doc(db, "settings", "member_config"), tempSettings);
+                // 🟢 จุดแก้ไขที่ 3: บันทึกแยกตามร้าน (user.shopId) ไม่ให้ทับร้านอื่น
+                await setDoc(doc(db, "settings", user.shopId), {
+                    ...tempSettings,
+                    shopId: user.shopId
+                });
                 alert('🚀 อัปเดตระบบแต้มเรียบร้อยแล้ว');
             } catch (e) { alert('❌ บันทึกไม่สำเร็จ: ' + e.message); }
         }
@@ -102,7 +101,6 @@ export default function MembershipView({ customers, settings, setSettings }) {
 
             {activeSubTab === 'list' ? (
                 <div className="space-y-4 animate-in fade-in duration-300">
-                    {/* ฟอร์ม: รองรับทั้งเพิ่มใหม่และแก้ไข */}
                     <Card className={`p-5 border-2 shadow-sm transition-all ${editingMemberId ? 'border-orange-200 bg-orange-50/30' : 'border-blue-50'}`}>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className={`font-bold flex items-center gap-2 ${editingMemberId ? 'text-orange-700' : 'text-blue-900'}`}>
@@ -141,7 +139,10 @@ export default function MembershipView({ customers, settings, setSettings }) {
 
                     <div className="space-y-2">
                         {filteredCustomers.length === 0 ? (
-                            <div className="text-center py-10 text-slate-300 text-xs italic font-bold uppercase tracking-widest">No Members Found</div>
+                            <div className="text-center py-10 text-slate-300 text-xs italic font-bold uppercase tracking-widest">
+                                <Users size={48} className="mx-auto mb-2 opacity-20" />
+                                No Members Found
+                            </div>
                         ) : (
                             filteredCustomers.map(c => (
                                 <div key={c.id} className="bg-white p-4 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm group hover:border-blue-200 transition-all">
@@ -157,7 +158,6 @@ export default function MembershipView({ customers, settings, setSettings }) {
                                             <p className="text-blue-600 font-black text-lg">{(c.points || 0).toLocaleString()}</p>
                                             <p className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Points</p>
                                         </div>
-                                        {/* 🟢 ปุ่มแก้ไข */}
                                         <button onClick={() => startEdit(c)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100">
                                             <Edit3 size={18} />
                                         </button>
@@ -171,7 +171,6 @@ export default function MembershipView({ customers, settings, setSettings }) {
                     </div>
                 </div>
             ) : (
-                /* ... ส่วนตั้งค่าระบบแต้มคงเดิม ... */
                 <div className="space-y-4 animate-in fade-in duration-300">
                     <Card className="p-6 border-none shadow-xl shadow-blue-50">
                         <div className="flex items-center gap-3 mb-6">

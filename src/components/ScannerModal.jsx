@@ -77,8 +77,8 @@ export default function ScannerModal({ isOpen, onClose, onScan }) {
                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-3 animate-bounce">
                   <Camera size={28} />
                </div>
-               <h3 className="font-bold text-xl mb-1 text-gray-800">สแกนต่อเนื่อง</h3>
-               <p className="text-gray-400 text-xs mb-4">กล้องจะไม่ปิดจนกว่าจะกดปุ่มกากบาท</p>
+               <h3 className="font-bold text-xl mb-1 text-gray-800">สแกน</h3>
+               
                
                <div id="reader" className="overflow-hidden rounded-2xl border-2 border-blue-50 bg-gray-50 min-h-[300px]"></div>
                

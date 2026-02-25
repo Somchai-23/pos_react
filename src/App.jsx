@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Package, ArrowDownLeft, ArrowUpRight, Users, BarChart2, LayoutDashboard, LogOut, ShieldCheck } from 'lucide-react';
 
-// --- 1. Firebase Imports (แก้ไข: เพิ่ม setDoc และ where) ---
+// --- 1. Firebase Imports ---
 import { db } from './firebase'; 
 import { 
   collection, onSnapshot, doc, deleteDoc, query, orderBy, 
-  setDoc, where // 🟢 เพิ่มการนำเข้าคำสั่งที่จำเป็น
+  setDoc, where 
 } from "firebase/firestore"; 
 
 // --- 2. Components Imports ---
@@ -39,12 +39,8 @@ export default function POSStockApp() {
   const [transactions, setTransactions] = useState([]);
   const [customers, setCustomers] = useState([]);
   
-  // 🟢 ใช้ชื่อ State นี้เป็นหลักสำหรับทั้งระบบสมาชิกและตั้งค่าร้าน
   const [memberSettings, setMemberSettings] = useState({ 
-    bahtPerPoint: 20, 
-    pointExpiryDays: 0, 
-    pointValue: 1,
-    shopName: "กำลังโหลด..." 
+    bahtPerPoint: 20, pointExpiryDays: 0, pointValue: 1, shopName: "กำลังโหลด..." 
   });
   
   const [heldBills, setHeldBills] = useState([]); 
@@ -52,17 +48,13 @@ export default function POSStockApp() {
   // --- 4. ระบบ Real-time Cloud Sync ---
   useEffect(() => {
     if (!user?.shopId) return; 
-
     const sid = user.shopId;
 
-    // --- 🟢 1. จัดการการตั้งค่าร้านค้า (Settings) ---
     const settingsRef = doc(db, "settings", sid); 
     const unsubSettings = onSnapshot(settingsRef, (docSnap) => {
         if (docSnap.exists()) {
-            // ✅ แก้ไข: เปลี่ยนจาก setSettings เป็น setMemberSettings ให้ตรงกับ State
             setMemberSettings(docSnap.data());
         } else {
-            // ✨ สร้างค่าเริ่มต้นสำหรับร้านใหม่
             const defaultSettings = {
                 shopName: user.shopName || "ร้านค้าใหม่ของคุณ",
                 bahtPerPoint: 10,
@@ -74,13 +66,11 @@ export default function POSStockApp() {
         }
     });
 
-    // --- 🔵 2. ดึงข้อมูลส่วนอื่นๆ (กรองตาม shopId) ---
     const qUsers = query(collection(db, "users"), where("shopId", "==", sid));
     const unsubUsers = onSnapshot(qUsers, (snap) => {
         setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })) || []);
     });
 
-    // ⚠️ หมายเหตุ: การใช้ orderBy ร่วมกับ where อาจต้องสร้าง Index ใน Firebase Console
     const qProd = query(collection(db, "products"), where("shopId", "==", sid), orderBy("name", "asc"));
     const unsubProd = onSnapshot(qProd, (snap) => {
         setProducts(snap.docs.map(d => ({ ...d.data(), id: d.id })) || []);
@@ -97,11 +87,7 @@ export default function POSStockApp() {
     });
 
     return () => { 
-        unsubSettings(); 
-        unsubUsers(); 
-        unsubProd(); 
-        unsubCust(); 
-        unsubTrans(); 
+        unsubSettings(); unsubUsers(); unsubProd(); unsubCust(); unsubTrans(); 
     };
   }, [user?.shopId]);
 
@@ -115,10 +101,10 @@ export default function POSStockApp() {
   };
 
   const calculateStock = useCallback((productId) => {
-    const incoming = transactions.filter(t => t.type === 'IN').flatMap(t => t.items || []).filter(i => i.productId === productId).reduce((sum, i) => sum + Number(i.qty), 0);
-    const outgoing = transactions.filter(t => t.type === 'OUT').flatMap(t => t.items || []).filter(i => i.productId === productId).reduce((sum, i) => sum + Number(i.qty), 0);
-    return incoming - outgoing;
-  }, [transactions]);
+    // 🟢 ปรับให้ดึงค่า stock จากตัวแปร products โดยตรงเพื่อความแม่นยำ
+    const p = products.find(prod => prod.id === productId);
+    return p ? Number(p.stock || 0) : 0;
+  }, [products]);
 
   const generateDocNo = (type) => {
     const prefix = type === 'IN' ? 'PO' : 'INV';
@@ -133,7 +119,6 @@ export default function POSStockApp() {
 
   if (!user) return <LoginView users={users} onLogin={(data) => setUser(data)} />;
 
-  // 🟡 เพิ่มระบบป้องกันหน้าจอขาวระหว่างรอโหลด Settings
   if (user && !memberSettings.shopId) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -147,6 +132,7 @@ export default function POSStockApp() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex overflow-hidden">
+      {/* Sidebar สำหรับคอมพิวเตอร์ */}
       <aside className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col sticky top-0 h-screen shadow-sm z-50">
         <div className="p-6 border-b flex items-center gap-3">
           <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-100"><LayoutDashboard size={20}/></div>
@@ -165,7 +151,7 @@ export default function POSStockApp() {
         </nav>
         <div className="p-4 border-t bg-white">
             <div className="mb-4 px-4 py-3 bg-slate-50 rounded-xl flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs">
+                <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs uppercase">
                     {(user?.name || '?')[0]}
                 </div>
                 <div className="overflow-hidden">
@@ -181,19 +167,18 @@ export default function POSStockApp() {
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
         <header className="md:hidden bg-white border-b px-6 py-4 flex justify-between items-center sticky top-0 z-40">
-          <span className="font-black text-blue-600 tracking-tight">MY POS</span>
+          <span className="font-black text-blue-600 tracking-tight uppercase">{memberSettings.shopName || "POS NAJA"}</span>
           <div className="text-[10px] font-black bg-blue-50 text-blue-600 px-3 py-1 rounded-full uppercase tracking-widest">{activeTab}</div>
         </header>
 
         <main className="flex-1 overflow-y-auto bg-slate-50/50 scrollbar-hide">
           <div className="max-w-[1600px] mx-auto pb-32 md:pb-8">
             
-            {/* 1. หน้าคลังสินค้า: เพิ่ม user={user} 🟢 */}
+            {/* 1. หน้าคลังสินค้า */}
             {activeTab === 'products' && (
               <ProductView 
                 user={user} 
                 products={products} 
-                setProducts={setProducts} 
                 viewState={viewState} 
                 setViewState={setViewState} 
                 calculateStock={calculateStock} 
@@ -207,7 +192,7 @@ export default function POSStockApp() {
               />
             )}
             
-            {/* 2. หน้าสมาชิก: เพิ่ม user={user} 🟢 */}
+            {/* 2. หน้าสมาชิก */}
             {activeTab === 'members' && (
               <MembershipView 
                 user={user}
@@ -217,10 +202,10 @@ export default function POSStockApp() {
               />
             )}
             
-            {/* 3. หน้าขายสินค้า: เพิ่ม user={user} 🟢 */}
+            {/* 3. หน้าขายสินค้า: 🟢 เปลี่ยนจาก user={user} เป็น currentUser={user} 🟢 */}
             {activeTab === 'sell' && (
               <SalesTerminal 
-                user={user}
+                currentUser={user} 
                 products={products}
                 generateDocNo={generateDocNo}
                 handleScanQR={handleScanQR}
@@ -232,7 +217,7 @@ export default function POSStockApp() {
               />
             )}
 
-            {/* 4. หน้าซื้อสต็อกเข้า: เพิ่ม user={user} 🟢 */}
+            {/* 4. หน้าซื้อสต็อกเข้า */}
             {activeTab === 'buy' && (
               <StockIntake 
                 user={user}
@@ -248,6 +233,7 @@ export default function POSStockApp() {
           </div>
         </main>
 
+        {/* เมนูด้านล่างสำหรับมือถือ */}
         <div className="md:hidden">
           <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} menuItems={menuItems} onLogout={handleLogout} />
         </div>
@@ -256,9 +242,7 @@ export default function POSStockApp() {
       <ScannerModal 
         isOpen={showScanner} 
         onClose={() => setShowScanner(false)} 
-        onScan={(text) => {
-          if(scanCallback) scanCallback(text);
-        }} 
+        onScan={(text) => { if(scanCallback) scanCallback(text); }} 
       />
     </div>
   );
