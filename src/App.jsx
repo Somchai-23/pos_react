@@ -45,11 +45,12 @@ export default function POSStockApp() {
   
   const [heldBills, setHeldBills] = useState([]); 
 
-  // --- 4. ระบบ Real-time Cloud Sync ---
+  // --- 3. ระบบ Real-time Cloud Sync ---
   useEffect(() => {
     if (!user?.shopId) return; 
     const sid = user.shopId;
 
+    // A. ดึงข้อมูลการตั้งค่าร้าน
     const settingsRef = doc(db, "settings", sid); 
     const unsubSettings = onSnapshot(settingsRef, (docSnap) => {
         if (docSnap.exists()) {
@@ -66,24 +67,29 @@ export default function POSStockApp() {
         }
     });
 
+    // B. ดึงรายชื่อพนักงานในร้าน
     const qUsers = query(collection(db, "users"), where("shopId", "==", sid));
     const unsubUsers = onSnapshot(qUsers, (snap) => {
-        setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })) || []);
+        setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
+    // C. ดึงรายการสินค้า (กรองตามร้าน และเรียงชื่อ)
+    // ⚠️ ถ้า Error 400 ให้กดลิงก์ใน Console เพื่อสร้าง Index ใน Firebase นะครับ
     const qProd = query(collection(db, "products"), where("shopId", "==", sid), orderBy("name", "asc"));
     const unsubProd = onSnapshot(qProd, (snap) => {
-        setProducts(snap.docs.map(d => ({ ...d.data(), id: d.id })) || []);
+        setProducts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
+    // D. ดึงรายชื่อลูกค้าสมาชิก
     const qCust = query(collection(db, "customers"), where("shopId", "==", sid));
     const unsubCust = onSnapshot(qCust, (snap) => {
-        setCustomers(snap.docs.map(d => ({ ...d.data(), id: d.id })) || []);
+        setCustomers(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
+    // E. ดึงประวัติธุรกรรม
     const qTrans = query(collection(db, "transactions"), where("shopId", "==", sid), orderBy("date", "desc"));
     const unsubTrans = onSnapshot(qTrans, (snap) => {
-        setTransactions(snap.docs.map(d => ({ ...d.data(), id: d.id })) || []);
+        setTransactions(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     });
 
     return () => { 
@@ -100,8 +106,8 @@ export default function POSStockApp() {
     }
   };
 
+  // 🟢 ปรับปรุงฟังก์ชันคำนวณสต็อกให้แม่นยำขึ้นโดยดึงจาก Cloud Field ตรงๆ
   const calculateStock = useCallback((productId) => {
-    // 🟢 ปรับให้ดึงค่า stock จากตัวแปร products โดยตรงเพื่อความแม่นยำ
     const p = products.find(prod => prod.id === productId);
     return p ? Number(p.stock || 0) : 0;
   }, [products]);
@@ -119,6 +125,7 @@ export default function POSStockApp() {
 
   if (!user) return <LoginView users={users} onLogin={(data) => setUser(data)} />;
 
+  // ป้องกันหน้าจอขาวระหว่างโหลดข้อมูลร้านค้า
   if (user && !memberSettings.shopId) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -135,7 +142,7 @@ export default function POSStockApp() {
       {/* Sidebar สำหรับคอมพิวเตอร์ */}
       <aside className="hidden md:flex w-64 bg-white border-r border-gray-200 flex-col sticky top-0 h-screen shadow-sm z-50">
         <div className="p-6 border-b flex items-center gap-3">
-          <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-100"><LayoutDashboard size={20}/></div>
+          <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg"><LayoutDashboard size={20}/></div>
           <span className="font-black text-xl tracking-tight text-slate-800 uppercase">
             {memberSettings.shopName || "POS NAJA"}
           </span>
@@ -167,7 +174,7 @@ export default function POSStockApp() {
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
         <header className="md:hidden bg-white border-b px-6 py-4 flex justify-between items-center sticky top-0 z-40">
-          <span className="font-black text-blue-600 tracking-tight uppercase">{memberSettings.shopName || "POS NAJA"}</span>
+          <span className="font-black text-blue-600 tracking-tight uppercase">{memberSettings.shopName || "MY POS"}</span>
           <div className="text-[10px] font-black bg-blue-50 text-blue-600 px-3 py-1 rounded-full uppercase tracking-widest">{activeTab}</div>
         </header>
 
@@ -192,7 +199,7 @@ export default function POSStockApp() {
               />
             )}
             
-            {/* 2. หน้าสมาชิก */}
+            {/* 2. หน้าสมาชิก (🟢 ส่ง user ไปให้แล้ว) */}
             {activeTab === 'members' && (
               <MembershipView 
                 user={user}
@@ -202,7 +209,7 @@ export default function POSStockApp() {
               />
             )}
             
-            {/* 3. หน้าขายสินค้า: 🟢 เปลี่ยนจาก user={user} เป็น currentUser={user} 🟢 */}
+            {/* 3. หน้าขายสินค้า (🟢 ส่ง currentUser={user} ไปตามที่ SalesTerminal ต้องการ) */}
             {activeTab === 'sell' && (
               <SalesTerminal 
                 currentUser={user} 
@@ -228,12 +235,12 @@ export default function POSStockApp() {
               />
             )}
             
-            {activeTab === 'reports' && <ReportView products={products} transactions={transactions} calculateStock={calculateStock} />}
+            {/* 5. หน้ารายงาน และ จัดการพนักงาน */}
+            {activeTab === 'reports' && <ReportView products={products} transactions={transactions} calculateStock={calculateStock} handleScanQR={handleScanQR} memberSettings={memberSettings} />}
             {activeTab === 'staff_manage' && <StaffManagementView users={users} currentUser={user} />}
           </div>
         </main>
 
-        {/* เมนูด้านล่างสำหรับมือถือ */}
         <div className="md:hidden">
           <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} menuItems={menuItems} onLogout={handleLogout} />
         </div>

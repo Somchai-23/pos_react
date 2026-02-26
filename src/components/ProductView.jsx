@@ -5,38 +5,32 @@ import { Button, Input, Card, ImageUpload } from './UIComponents';
 import { db } from '../firebase'; 
 import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 
-export default function ProductView({ products, viewState, setViewState, handleScanQR, handleDeleteProduct, userRole }) {
+// 🟢 เพิ่ม 'user' เข้าไปใน Props เพื่อให้รู้จักรหัสร้าน (shopId)
+export default function ProductView({ user, products, viewState, setViewState, handleScanQR, handleDeleteProduct, userRole }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [tempProduct, setTempProduct] = useState({});
     const [printSize, setPrintSize] = useState(150); 
     const [printQty, setPrintQty] = useState(1);
-    
-    // 🟢 1. เพิ่ม State สำหรับการกรอง (all, low, out)
     const [filterType, setFilterType] = useState('all');
 
     const isOwner = userRole === 'OWNER';
 
-    // 🟢 2. คำนวณสรุปสถานะ
+    // การคำนวณสรุปสถานะ
     const lowStockItems = products.filter(p => {
         const stock = Number(p.stock || 0);
         const min = Number(p.minStock || 5);
         return stock > 0 && stock <= min;
     });
-
     const outOfStockItems = products.filter(p => Number(p.stock || 0) <= 0);
 
-    // 🟢 3. ตรรกะการกรองสินค้า (Search + Status Filter)
+    // ตรรกะการกรองสินค้า
     const filteredProducts = products.filter(p => {
-        // กรองด้วยคำค้นหา
         const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.code?.includes(searchTerm);
-        
-        // กรองด้วยสถานะ
         const stock = Number(p.stock || 0);
         const min = Number(p.minStock || 5);
         let matchesFilter = true;
         if (filterType === 'low') matchesFilter = stock > 0 && stock <= min;
         if (filterType === 'out') matchesFilter = stock <= 0;
-
         return matchesSearch && matchesFilter;
     });
 
@@ -58,10 +52,11 @@ export default function ProductView({ products, viewState, setViewState, handleS
         if (!isOwner) return;
         if (!tempProduct.name || !tempProduct.code) return alert('⚠️ กรุณากรอกชื่อและรหัสสินค้าให้ครบ');
         
+        // 🟢 ตอนนี้ฟังก์ชันรู้จัก 'user' แล้ว จึงดึง shopId มาใช้ได้
         const productData = { 
             name: tempProduct.name,
             code: tempProduct.code,
-            shopId: user.shopId,
+            shopId: user.shopId, // ✅ ระบุร้านค้าเจ้าของสินค้า
             img: tempProduct.img || '📦',
             unit: tempProduct.unit || 'ชิ้น',
             sellPrice: Number(tempProduct.sellPrice || 0),
@@ -184,9 +179,7 @@ export default function ProductView({ products, viewState, setViewState, handleS
 
     return (
         <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto pb-24">
-            {/* 🟢 ส่วน Dashboard และตัวกรองสินค้า */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 no-print">
-                
                 <button onClick={() => setFilterType('all')} 
                         className={`p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4 transition-all border-2 text-left ${filterType === 'all' ? 'bg-blue-600 text-white border-blue-400 scale-105 shadow-blue-200' : 'bg-white border-gray-100 text-slate-800 hover:border-blue-200'}`}>
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${filterType === 'all' ? 'bg-white text-blue-600' : 'bg-blue-500 text-white'}`}><LayoutGrid size={24}/></div>
@@ -196,7 +189,6 @@ export default function ProductView({ products, viewState, setViewState, handleS
                     </div>
                 </button>
 
-                {/* ใกล้หมดคลัง */}
                 <button onClick={() => setFilterType('low')} 
                         className={`p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4 transition-all border-2 text-left ${filterType === 'low' ? 'bg-orange-500 text-white border-orange-300 scale-105 shadow-orange-200' : 'bg-orange-50 border-orange-100 text-orange-800 hover:border-orange-300'}`}>
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${filterType === 'low' ? 'bg-white text-orange-600' : 'bg-orange-500 text-white'}`}><Box size={24}/></div>
@@ -206,7 +198,6 @@ export default function ProductView({ products, viewState, setViewState, handleS
                     </div>
                 </button>
 
-                {/* หมดสต็อก */}
                 <button onClick={() => setFilterType('out')} 
                         className={`p-5 rounded-[2.5rem] shadow-sm flex items-center gap-4 transition-all border-2 text-left ${filterType === 'out' ? 'bg-red-500 text-white border-red-300 scale-105 shadow-red-200' : 'bg-red-50 border-red-100 text-red-800 hover:border-red-300'}`}>
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${filterType === 'out' ? 'bg-white text-red-600' : 'bg-red-500 text-white'}`}><PackageX size={24}/></div>
@@ -218,14 +209,7 @@ export default function ProductView({ products, viewState, setViewState, handleS
             </div>
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print pt-4">
-                <div className="flex items-center gap-3">
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight italic">รายการสินค้า</h1>
-                    {filterType !== 'all' && (
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter shadow-sm animate-bounce ${
-                            filterType === 'low' ? 'bg-orange-100 text-orange-600 border border-orange-200' : 'bg-red-100 text-red-600 border border-red-200'
-                        }`}>Filtering: {filterType}</span>
-                    )}
-                </div>
+                <h1 className="text-3xl font-black text-slate-800 tracking-tight italic">รายการสินค้า</h1>
                 {isOwner && (
                     <Button onClick={() => { setTempProduct({ img: '📦', minStock: 5, buyPrice: 0, sellPrice: 0, stock: 0 }); setViewState('form'); }}>
                         <Plus size={20} /> เพิ่มสินค้าใหม่
@@ -238,7 +222,6 @@ export default function ProductView({ products, viewState, setViewState, handleS
                 <Search className="absolute left-4 top-4 text-gray-400" size={20} />
             </div>
 
-            {/* รายการสินค้าที่ผ่านการกรองแล้ว */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 no-print">
                 {filteredProducts.length > 0 ? (
                     filteredProducts.map(p => {
@@ -270,8 +253,6 @@ export default function ProductView({ products, viewState, setViewState, handleS
                                         <span className={`text-xl font-black ${isOutOfStock ? 'text-red-600' : isLowStock ? 'text-orange-500' : 'text-blue-600'}`}>
                                             {currentStock.toLocaleString()} <span className="text-[10px] text-slate-300 uppercase">{p.unit}</span>
                                         </span>
-                                        {isLowStock && <p className="text-[9px] font-bold text-orange-400 uppercase mt-1 flex items-center gap-1"><AlertCircle size={10}/> Low Stock</p>}
-                                        {isOutOfStock && <p className="text-[9px] font-bold text-red-500 uppercase mt-1">❌ Out of Stock</p>}
                                     </div>
                                     <div className="text-right">
                                         <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-black">ราคาขาย</p>
