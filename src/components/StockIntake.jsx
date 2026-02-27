@@ -63,6 +63,10 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
 
                 // 2. บันทึกประวัติบิล (ยอดซื้อเข้า)
                 const billRef = doc(collection(db, "transactions"));
+                
+                // 🟢 สร้างตัวแปรดึงชื่อพนักงานที่กำลังใช้งานอยู่ (ดึงจากอีเมล หรือ ชื่อที่ตั้งไว้)
+                const operatorName = user?.displayName || user?.email?.split('@')[0] || 'พนักงาน (Staff)';
+
                 const billData = {
                     type: 'IN', // 👈 สำคัญมาก: กำหนดว่าเป็นขาเข้า
                     docNo: currentDocNo, 
@@ -71,7 +75,8 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                     items: intakeList, 
                     totalAmount: totalAmount, 
                     note: note, 
-                    memberName: 'Supplier (ผู้จัดจำหน่าย)', // ใส่เผื่อไว้ไม่ให้ error ในหน้ารายงาน
+                    // 🟢 เปลี่ยนจาก 'Supplier' เป็นตัวแปร operatorName แทน
+                    memberName: operatorName, 
                     createdAt: new Date()
                 };
                 transaction.set(billRef, billData);

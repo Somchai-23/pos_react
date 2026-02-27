@@ -1,71 +1,88 @@
 import React, { useState } from 'react';
-import { UserPlus, Shield, Key, Trash2, Mail, Users, Edit3, Lock, X, CheckCircle } from 'lucide-react';
+import { UserPlus, Shield, Key, Trash2, Mail, Users, Edit3, Lock, X, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Button, Input, Card } from './UIComponents';
-
-// --- 1. นำเข้า updateDoc เพิ่มเติมเพื่อใช้ในการแก้ไข ---
 import { db } from '../firebase';
 import { collection, addDoc, doc, deleteDoc, updateDoc } from "firebase/firestore";
 
 export default function StaffManagementView({ users, setUsers, currentUser }) {
     const [newStaff, setNewStaff] = useState({ name: '', username: '', password: '', role: 'STAFF' });
-    const [editingStaffId, setEditingStaffId] = useState(null); // 🟢 เก็บ ID พนักงานที่กำลังแก้ไข
+    const [editingStaffId, setEditingStaffId] = useState(null); 
     
-    // --- 🟢 States สำหรับระบบยืนยันตัวตนเจ้าของ ---
-    const [isReauthorizing, setIsReauthorizing] = useState(false);
+    // --- 🟢 States สำหรับระบบยืนยันตัวตนเจ้าของ (ใช้ร่วมกันทั้ง Edit และ Delete) ---
+    const [authAction, setAuthAction] = useState(null); // รูปแบบ: { type: 'edit' หรือ 'delete', staff: {} }
     const [ownerPasswordConfirm, setOwnerPasswordConfirm] = useState('');
-    const [pendingEditStaff, setPendingEditStaff] = useState(null);
 
-    // --- 🟢 2. ฟังก์ชันเริ่มกระบวนการแก้ไข (เปิดหน้าต่างใส่รหัส) ---
-    const startEditProcess = (staff) => {
-        setPendingEditStaff(staff);
-        setIsReauthorizing(true);
+    // --- 🟢 1. ฟังก์ชันเริ่มกระบวนการยืนยันตัวตน ---
+    const startAuthProcess = (type, staff) => {
+        // ป้องกันไม่ให้เจ้าของร้านลบตัวเอง
+        if (type === 'delete' && staff.name === (currentUser?.name || '')) {
+            return alert('❌ คุณไม่สามารถลบตัวเองได้');
+        }
+        
+        setAuthAction({ type, staff });
         setOwnerPasswordConfirm('');
     };
 
-    // --- 🟢 3. ฟังก์ชันตรวจสอบรหัสเจ้าของร้าน ---
-    const handleVerifyOwner = () => {
+    // --- 🟢 2. ฟังก์ชันตรวจสอบรหัสและทำรายการต่อ ---
+    const handleAuthSubmit = async (e) => {
+        if (e) e.preventDefault(); // กันฟอร์มเด้งรีเฟรช
+
         if (ownerPasswordConfirm === currentUser.password) {
-            // ถ้ารหัสถูกต้อง ให้ดึงข้อมูลพนักงานขึ้นไปที่ฟอร์มด้านบน
-            setEditingStaffId(pendingEditStaff.id);
-            setNewStaff({ 
-                name: pendingEditStaff.name, 
-                username: pendingEditStaff.username, 
-                password: pendingEditStaff.password, 
-                role: pendingEditStaff.role 
-            });
-            setIsReauthorizing(false);
-            setPendingEditStaff(null);
-            window.scrollTo({ top: 0, behavior: 'smooth' }); // เลื่อนจอขึ้นไปที่ฟอร์ม
+            // ถ้ารหัสถูกต้อง ให้เช็คว่าทำรายการอะไรอยู่
+            if (authAction.type === 'edit') {
+                setEditingStaffId(authAction.staff.id);
+                setNewStaff({ 
+                    name: authAction.staff.name, 
+                    username: authAction.staff.username, 
+                    password: authAction.staff.password, 
+                    role: authAction.staff.role 
+                });
+                setAuthAction(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' }); 
+            } 
+            else if (authAction.type === 'delete') {
+                try {
+                    await deleteDoc(doc(db, "users", authAction.staff.id));
+                    alert('✅ ลบข้อมูลพนักงานเรียบร้อยแล้ว');
+                    setAuthAction(null);
+                } catch (error) { 
+                    alert('❌ เกิดข้อผิดพลาดในการลบ: ' + error.message); 
+                }
+            }
         } else {
             alert('❌ รหัสผ่านเจ้าของร้านไม่ถูกต้อง!');
         }
     };
 
-const handleSaveStaff = async () => {
-    // 🟢 ตรวจสอบว่า PIN ต้องเป็น 4 หลักพอดี (หรือตามที่คุณต้องการ)
-    if (newStaff.password.length !== 4) {
-        return alert('⚠️ รหัสพนักงานต้องมี 4 หลักเท่านั้น');
-    }
+    const handleSaveStaff = async () => {
+        if (newStaff.password.length !== 4) {
+            return alert('⚠️ รหัสพนักงานต้องมี 4 หลักเท่านั้น');
+        }
 
-    try {
-        await addDoc(collection(db, "users"), {
-            ...newStaff,
-            shopId: currentUser.shopId,     // ผูกกับรหัสร้าน
-            ownerEmail: currentUser.email, // 🟢 สำคัญ: ใช้อีเมลเจ้าของร้านเป็น Namespace
-            createdAt: new Date().toISOString()
-        });
-        alert('✅ เพิ่มพนักงานเรียบร้อย (รหัส 4 หลัก)');
-        setNewStaff({ name: '', username: '', password: '', role: 'STAFF' });
-    } catch (error) { /* ... error handling ... */ }
-};
-
-    const handleDeleteStaff = async (id, staffName) => {
-        if (staffName === (currentUser?.name || '')) return alert('❌ คุณไม่สามารถลบตัวเองได้');
-        if (window.confirm(`ยืนยันการลบพนักงาน "${staffName || 'ไม่ระบุชื่อ'}"?`)) {
-            try {
-                await deleteDoc(doc(db, "users", id));
-                alert('✅ ลบพนักงานเรียบร้อย');
-            } catch (error) { alert('❌ เกิดข้อผิดพลาด: ' + error.message); }
+        try {
+            if (editingStaffId) {
+                const staffRef = doc(db, "users", editingStaffId);
+                await updateDoc(staffRef, {
+                    name: newStaff.name,
+                    username: newStaff.username,
+                    password: newStaff.password,
+                    role: newStaff.role
+                });
+                alert('✅ อัปเดตข้อมูลพนักงานเรียบร้อย');
+            } else {
+                await addDoc(collection(db, "users"), {
+                    ...newStaff,
+                    shopId: currentUser.shopId,     
+                    ownerEmail: currentUser.email, 
+                    createdAt: new Date().toISOString()
+                });
+                alert('✅ เพิ่มพนักงานเรียบร้อย (รหัส 4 หลัก)');
+            }
+            
+            setEditingStaffId(null);
+            setNewStaff({ name: '', username: '', password: '', role: 'STAFF' });
+        } catch (error) { 
+            alert('❌ เกิดข้อผิดพลาด: ' + error.message); 
         }
     };
 
@@ -98,7 +115,7 @@ const handleSaveStaff = async () => {
                     
                     <div className="flex flex-col gap-1.5">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">ตำแหน่ง</label>
-                        <select className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl p-4 text-sm font-bold outline-none" value={newStaff.role} onChange={e => setNewStaff({...newStaff, role: e.target.value})}>
+                        <select className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none focus:border-blue-400 transition-colors" value={newStaff.role} onChange={e => setNewStaff({...newStaff, role: e.target.value})}>
                             <option value="STAFF">Staff (พนักงานทั่วไป)</option>
                             <option value="OWNER">Owner (เจ้าของร้าน)</option>
                         </select>
@@ -131,10 +148,12 @@ const handleSaveStaff = async () => {
                         <div className="flex items-center gap-2">
                             {staff.name !== (currentUser?.name || '') && (
                                 <>
-                                    <button onClick={() => startEditProcess(staff)} className="p-3 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all opacity-0 group-hover:opacity-100">
+                                    {/* 🔴 เรียกใช้ฟังก์ชันแบบส่งชนิดเข้าไป (edit) */}
+                                    <button onClick={() => startAuthProcess('edit', staff)} className="p-3 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-xl transition-colors">
                                         <Edit3 size={20} />
                                     </button>
-                                    <button onClick={() => handleDeleteStaff(staff.id, staff.name)} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100">
+                                    {/* 🔴 เรียกใช้ฟังก์ชันแบบส่งชนิดเข้าไป (delete) */}
+                                    <button onClick={() => startAuthProcess('delete', staff)} className="p-3 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors">
                                         <Trash2 size={20} />
                                     </button>
                                 </>
@@ -145,29 +164,45 @@ const handleSaveStaff = async () => {
                 ))}
             </div>
 
-            {/* 🟢 Re-authentication Modal (หน้าต่างยืนยันรหัสเจ้าของ) */}
-            {isReauthorizing && (
+            {/* 🔒 Re-authentication Modal (หน้าต่างยืนยันรหัสเจ้าของร้าน สำหรับ Edit และ Delete) */}
+            {authAction && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <Card className="max-w-sm w-full p-8 shadow-2xl border-none animate-in zoom-in-95">
+                    <Card className="max-w-sm w-full p-8 shadow-2xl border-none animate-in zoom-in-95 rounded-[2.5rem] relative">
+                        <button onClick={() => setAuthAction(null)} className="absolute right-6 top-6 text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full transition-colors">
+                            <X size={16} />
+                        </button>
+                        
                         <div className="text-center space-y-4">
-                            <div className="w-16 h-16 bg-slate-100 text-slate-900 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                                <Lock size={32} />
+                            {/* เปลี่ยนสีไอคอนตามการกระทำ (ฟ้า=แก้, แดง=ลบ) */}
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-inner ${authAction.type === 'delete' ? 'bg-red-100 text-red-500' : 'bg-blue-100 text-blue-600'}`}>
+                                {authAction.type === 'delete' ? <AlertTriangle size={32} /> : <Lock size={32} />}
                             </div>
+                            
                             <div>
-                                <h3 className="text-xl font-black text-slate-800">ยืนยันตัวตนเจ้าของร้าน</h3>
-                                <p className="text-xs text-slate-400 font-bold uppercase mt-1">กรุณาใส่รหัสผ่านเพื่อแก้ไขข้อมูล</p>
+                                <h3 className="text-xl font-black text-slate-800">
+                                    {authAction.type === 'edit' ? 'ยืนยันเพื่อแก้ไขข้อมูล' : 'ยืนยันเพื่อลบพนักงาน'}
+                                </h3>
+                                <p className="text-sm text-slate-500 font-bold mt-2">
+                                    พนักงาน: <span className="text-slate-800">{authAction.staff.name}</span>
+                                </p>
                             </div>
-                            <Input 
-                                type="password" 
-                                placeholder="รหัสผ่านของคุณ" 
-                                value={ownerPasswordConfirm} 
-                                onChange={e => setOwnerPasswordConfirm(e.target.value)}
-                                autoFocus
-                            />
-                            <div className="flex gap-3 pt-2">
-                                <Button variant="secondary" onClick={() => setIsReauthorizing(false)} className="flex-1">ยกเลิก</Button>
-                                <Button onClick={handleVerifyOwner} className="flex-1 font-black bg-slate-900 text-white">ตกลง</Button>
-                            </div>
+                            
+                            <form onSubmit={handleAuthSubmit} className="space-y-4 pt-4">
+                                <input 
+                                    type="password" 
+                                    placeholder="ใส่รหัสผ่าน" 
+                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-center text-xl font-black tracking-widest outline-none focus:border-blue-500 transition-all"
+                                    value={ownerPasswordConfirm} 
+                                    onChange={e => setOwnerPasswordConfirm(e.target.value)}
+                                    autoFocus
+                                />
+                                <div className="flex gap-3">
+                                    <Button type="button" variant="secondary" onClick={() => setAuthAction(null)} className="flex-1 border-none bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold">ยกเลิก</Button>
+                                    <Button type="submit" className={`flex-1 font-black text-white shadow-lg border-none ${authAction.type === 'delete' ? 'bg-red-500 hover:bg-red-600 shadow-red-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}>
+                                        ยืนยัน
+                                    </Button>
+                                </div>
+                            </form>
                         </div>
                     </Card>
                 </div>

@@ -5,7 +5,6 @@ import { Button, Input, Card, ImageUpload } from './UIComponents';
 import { db } from '../firebase'; 
 import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 
-// 🟢 เพิ่ม 'user' เข้าไปใน Props เพื่อให้รู้จักรหัสร้าน (shopId)
 export default function ProductView({ user, products, viewState, setViewState, handleScanQR, handleDeleteProduct, userRole }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [tempProduct, setTempProduct] = useState({});
@@ -52,11 +51,17 @@ export default function ProductView({ user, products, viewState, setViewState, h
         if (!isOwner) return;
         if (!tempProduct.name || !tempProduct.code) return alert('⚠️ กรุณากรอกชื่อและรหัสสินค้าให้ครบ');
         
-        // 🟢 ตอนนี้ฟังก์ชันรู้จัก 'user' แล้ว จึงดึง shopId มาใช้ได้
+        // 🟢 เพิ่มระบบเช็ครหัสสินค้าซ้ำ (ค้นหาว่ามีสินค้ารหัสนี้อยู่แล้วหรือไม่ โดยข้ามการเช็คตัวเองตอนแก้ไข)
+        const isDuplicateCode = products.find(p => p.code === tempProduct.code && p.id !== tempProduct.id);
+        
+        if (isDuplicateCode) {
+            return alert(`❌ ไม่สามารถบันทึกได้!\nรหัสสินค้า "${tempProduct.code}" ถูกใช้งานไปแล้วกับสินค้า:\n👉 "${isDuplicateCode.name}"`);
+        }
+        
         const productData = { 
             name: tempProduct.name,
             code: tempProduct.code,
-            shopId: user.shopId, // ✅ ระบุร้านค้าเจ้าของสินค้า
+            shopId: user.shopId, 
             img: tempProduct.img || '📦',
             unit: tempProduct.unit || 'ชิ้น',
             sellPrice: Number(tempProduct.sellPrice || 0),
