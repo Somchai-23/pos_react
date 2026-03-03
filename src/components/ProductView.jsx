@@ -14,7 +14,6 @@ export default function ProductView({ user, products, viewState, setViewState, h
 
     const isOwner = userRole === 'OWNER';
 
-    // การคำนวณสรุปสถานะ
     const lowStockItems = products.filter(p => {
         const stock = Number(p.stock || 0);
         const min = Number(p.minStock || 5);
@@ -22,7 +21,6 @@ export default function ProductView({ user, products, viewState, setViewState, h
     });
     const outOfStockItems = products.filter(p => Number(p.stock || 0) <= 0);
 
-    // ตรรกะการกรองสินค้า
     const filteredProducts = products.filter(p => {
         const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.code?.includes(searchTerm);
         const stock = Number(p.stock || 0);
@@ -38,7 +36,8 @@ export default function ProductView({ user, products, viewState, setViewState, h
         let newCode = '';
         let isDuplicate = true;
         while (isDuplicate) {
-            newCode = Math.floor(10000000 + Math.random() * 90000000).toString();
+            // 🟢 เติม "SYS-" นำหน้า เพื่อให้รู้ว่าเป็นรหัสที่ระบบสร้างขึ้นมาให้
+            newCode = 'SYS-' + Math.floor(100000 + Math.random() * 900000).toString();
             const duplicate = products.find(p => p.code === newCode);
             if (!duplicate) isDuplicate = false;
         }
@@ -51,7 +50,6 @@ export default function ProductView({ user, products, viewState, setViewState, h
         if (!isOwner) return;
         if (!tempProduct.name || !tempProduct.code) return alert('⚠️ กรุณากรอกชื่อและรหัสสินค้าให้ครบ');
         
-        // 🟢 เพิ่มระบบเช็ครหัสสินค้าซ้ำ (ค้นหาว่ามีสินค้ารหัสนี้อยู่แล้วหรือไม่ โดยข้ามการเช็คตัวเองตอนแก้ไข)
         const isDuplicateCode = products.find(p => p.code === tempProduct.code && p.id !== tempProduct.id);
         
         if (isDuplicateCode) {
@@ -82,6 +80,9 @@ export default function ProductView({ user, products, viewState, setViewState, h
     };
 
     if (viewState === 'form') {
+        // 🟢 เช็คว่าตอนนี้กำลัง "แก้ไข" สินค้าอยู่ใช่หรือไม่ (ถ้ามี id แปลว่าเป็นการแก้ไข ไม่ใช่เพิ่มใหม่)
+        const isEditing = !!tempProduct.id;
+
         return (
             <div className="p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-300 max-w-2xl mx-auto">
                 <style>{`
@@ -121,10 +122,10 @@ export default function ProductView({ user, products, viewState, setViewState, h
                             <ChevronRight className="rotate-180 text-gray-600" size={20} />
                         </button>
                         <h2 className="text-2xl font-bold text-gray-900 tracking-tight uppercase">
-                            {isOwner ? (tempProduct.id ? 'Edit' : 'New Product') : 'Product Details'}
+                            {isOwner ? (isEditing ? 'Edit Product' : 'New Product') : 'Product Details'}
                         </h2>
                     </div>
-                    {tempProduct.id && isOwner && (
+                    {isEditing && isOwner && (
                         <button onClick={() => { handleDeleteProduct(tempProduct.id); setViewState('list'); }} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all">
                             <Trash2 size={24} />
                         </button>
@@ -136,17 +137,32 @@ export default function ProductView({ user, products, viewState, setViewState, h
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
                         <div className="col-span-full">
                             <div className="flex items-end gap-2">
-                                <div className="flex-1">
-                                    <Input label="รหัสสินค้า" value={tempProduct.code || ''} onChange={e => setTempProduct({...tempProduct, code: e.target.value})} disabled={!isOwner} icon={QrCode} onIconClick={() => handleScanQR((code) => setTempProduct({...tempProduct, code}))} />
+                                <div className="flex-1 relative">
+                                    <Input 
+                                        label="รหัสสินค้า (Barcode / QR)" 
+                                        value={tempProduct.code || ''} 
+                                        onChange={e => setTempProduct({...tempProduct, code: e.target.value})} 
+                                        // 🟢 ถ้าไม่ใช่ Owner หรือ เป็นการ "แก้ไข" จะไม่ให้แก้รหัสเด็ดขาด
+                                        disabled={!isOwner || isEditing} 
+                                        icon={!isEditing && QrCode} // ซ่อนปุ่มแสกนถ้าเป็นการแก้ไข
+                                        onIconClick={!isEditing ? () => handleScanQR((code) => setTempProduct({...tempProduct, code})) : undefined} 
+                                    />
+                                    {isEditing && (
+                                        <p className="text-[10px] text-red-500 font-bold mt-1 absolute -bottom-5 right-1">
+                                            <Lock size={10} className="inline mb-0.5 mr-0.5" /> ไม่สามารถแก้ไขรหัสสินค้าที่บันทึกแล้วได้
+                                        </p>
+                                    )}
                                 </div>
-                                {isOwner && (
+                                
+                                {/* 🟢 ปุ่มสร้างรหัสออโต้ จะโชว์เฉพาะตอนสร้างสินค้าใหม่เท่านั้น */}
+                                {isOwner && !isEditing && (
                                     <button type="button" onClick={handleGenerateRandomCode} className="mb-4 p-3.5 bg-purple-50 text-purple-600 rounded-xl border border-purple-100 hover:bg-purple-100 active:scale-95 transition-all"><Wand2 size={20} /></button>
                                 )}
                             </div>
                         </div>
 
                         {tempProduct.code && isOwner && (
-                            <div className="col-span-full bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-6">
+                            <div className="col-span-full bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-6 mt-4">
                                 <div className="flex flex-col sm:flex-row items-center gap-4">
                                     <div className="bg-white p-2 rounded-lg shadow-sm">
                                         <QRCode value={tempProduct.code} size={80} />
@@ -248,7 +264,9 @@ export default function ProductView({ user, products, viewState, setViewState, h
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <h3 className="font-black text-slate-800 truncate text-base">{p.name}</h3>
-                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-mono font-bold text-slate-400">{p.code}</span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${p.code.startsWith('SYS-') ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-400'}`}>
+                                            {p.code}
+                                        </span>
                                     </div>
                                 </div>
                                 

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { QrCode, Trash2, Plus, ArrowDownLeft, Save, PackagePlus, FileText, Box } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { QrCode, Trash2, Plus, ArrowDownLeft, Save, PackagePlus, FileText, Box, SearchCode } from 'lucide-react';
 import { Button, Input, Card } from './UIComponents';
 import { db } from '../firebase';
 import { collection, doc, increment, runTransaction } from "firebase/firestore";
@@ -13,8 +13,38 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
     const [currentDocNo, setCurrentDocNo] = useState('');
     const [loading, setLoading] = useState(false);
 
+    // 🟢 State สำหรับระบบค้นหาสินค้า (Autocomplete)
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const searchRef = useRef(null);
+
     // สร้างเลขที่บิลรับเข้า (PO - Purchase Order)
     useEffect(() => { setCurrentDocNo(generateDocNo('IN')); }, [generateDocNo]);
+
+    // 🟢 ระบบซ่อนกล่อง Suggestion เมื่อคลิกที่อื่น
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (searchRef.current && !searchRef.current.contains(event.target)) {
+                setShowSuggestions(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    // 🟢 ระบบกรองสินค้าตามคำค้นหา
+    const suggestedProducts = products.filter(p => 
+        p.code?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        p.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    ).slice(0, 5); // แสดงแค่ 5 รายการ
+
+    // 🟢 ฟังก์ชันเมื่อคลิกเลือกสินค้าจากคำค้นหา
+    const selectProductFromSearch = (product) => {
+        setSelectedProduct(product.id);
+        setBuyPrice(product.buyPrice || 0); // ดึงต้นทุนมาแสดง
+        setSearchQuery(`${product.code} - ${product.name}`); 
+        setShowSuggestions(false);
+    };
 
     const handleAddToList = () => {
         const product = products.find(p => p.id === selectedProduct);
@@ -38,9 +68,12 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                 unit: product.unit 
             }]);
         }
+        
+        // ล้างค่าหลังจากกดเพิ่ม
         setQty(1); 
         setSelectedProduct(''); 
         setBuyPrice(0);
+        setSearchQuery(''); 
     };
 
     const handleSaveIntake = async () => {
@@ -51,31 +84,25 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
             const totalAmount = intakeList.reduce((sum, item) => sum + item.total, 0);
 
             await runTransaction(db, async (transaction) => {
-                // 1. เพิ่มสต็อกสินค้าในฐานข้อมูล
                 for (const item of intakeList) {
                     const productRef = doc(db, "products", item.productId);
-                    // สั่งเพิ่มสต็อก (+qty) และอัปเดตราคาต้นทุนล่าสุด (buyPrice)
                     transaction.update(productRef, { 
                         stock: increment(Number(item.qty)),
                         buyPrice: Number(item.price) 
                     });
                 }
 
-                // 2. บันทึกประวัติบิล (ยอดซื้อเข้า)
                 const billRef = doc(collection(db, "transactions"));
-                
-                // 🟢 สร้างตัวแปรดึงชื่อพนักงานที่กำลังใช้งานอยู่ (ดึงจากอีเมล หรือ ชื่อที่ตั้งไว้)
                 const operatorName = user?.displayName || user?.email?.split('@')[0] || 'พนักงาน (Staff)';
 
                 const billData = {
-                    type: 'IN', // 👈 สำคัญมาก: กำหนดว่าเป็นขาเข้า
+                    type: 'IN', 
                     docNo: currentDocNo, 
-                    shopId: user.shopId, // 👈 ระบุร้านค้า เพื่อให้หน้ารายงานดึงไปโชว์ได้
+                    shopId: user.shopId, 
                     date: new Date().toISOString(),
                     items: intakeList, 
                     totalAmount: totalAmount, 
                     note: note, 
-                    // 🟢 เปลี่ยนจาก 'Supplier' เป็นตัวแปร operatorName แทน
                     memberName: operatorName, 
                     createdAt: new Date()
                 };
@@ -112,23 +139,59 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                     </div>
 
                     <Card className="!p-6 md:!p-8 border-none shadow-xl bg-white rounded-[2.5rem]">
-                        <div className="flex gap-2 mb-6">
-                            <select className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-bold outline-none focus:border-emerald-300 transition-colors" 
-                                value={selectedProduct} 
-                                onChange={(e) => {
-                                    const pid = e.target.value; 
-                                    setSelectedProduct(pid);
-                                    const p = products.find(prod => prod.id === pid);
-                                    if(p) setBuyPrice(p.buyPrice || 0); // ดึงราคาต้นทุนเดิมมาแสดง
-                                }}>
-                                <option value="">-- เลือกสินค้าที่ต้องการนำเข้า --</option>
-                                {products.map(p => <option key={p.id} value={p.id}>{p.code} | {p.name}</option>)}
-                            </select>
+                        
+                        {/* 🟢 ส่วนค้นหาสินค้า (เปลี่ยนจาก Select เป็น Search) */}
+                        <div className="flex gap-2 mb-6 relative" ref={searchRef}>
+                            <div className="flex-1 relative">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <SearchCode size={20} className="text-slate-400" />
+                                </div>
+                                <input 
+                                    type="text"
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold outline-none focus:border-emerald-400 transition-colors"
+                                    placeholder="รหัสสินค้า"
+                                    value={searchQuery}
+                                    onChange={(e) => {
+                                        setSearchQuery(e.target.value);
+                                        setSelectedProduct(''); // รีเซ็ตการเลือก
+                                        setShowSuggestions(true);
+                                    }}
+                                    onFocus={() => setShowSuggestions(true)}
+                                />
+                                
+                                {/* กล่อง Suggestion */}
+                                {showSuggestions && searchQuery.trim() !== '' && (
+                                    <div className="absolute z-10 w-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                        {suggestedProducts.length > 0 ? (
+                                            suggestedProducts.map(p => (
+                                                <div 
+                                                    key={p.id} 
+                                                    className="px-4 py-3 hover:bg-emerald-50 cursor-pointer border-b border-slate-50 last:border-0 flex justify-between items-center transition-colors"
+                                                    onClick={() => selectProductFromSearch(p)}
+                                                >
+                                                    <div>
+                                                        <p className="font-black text-sm text-slate-800">{p.name}</p>
+                                                        <p className="text-[10px] font-mono text-slate-400">{p.code}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="font-black text-emerald-600">ทุน ฿{(p.buyPrice || 0).toLocaleString()}</p>
+                                                        <p className="text-[10px] font-bold text-slate-400">เหลือ {p.stock}</p>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="px-4 py-4 text-center text-sm font-bold text-slate-400">ไม่พบสินค้าที่ตรงกัน</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
                             <Button variant="secondary" className="rounded-2xl w-14 h-14 bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-600 border-none" onClick={() => handleScanQR((code) => {
                                 const p = products.find(prod => prod.code === code);
                                 if (!p) return alert('❌ ไม่พบสินค้านี้ในระบบ');
                                 setSelectedProduct(p.id);
                                 setBuyPrice(p.buyPrice || 0);
+                                setSearchQuery(`${p.code} - ${p.name}`); // นำชื่อไปใส่ในช่องค้นหา
                             })}><QrCode /></Button>
                         </div>
 
