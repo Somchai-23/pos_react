@@ -13,15 +13,12 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
     const [currentDocNo, setCurrentDocNo] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // 🟢 State สำหรับระบบค้นหาสินค้า (Autocomplete)
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchRef = useRef(null);
 
-    // สร้างเลขที่บิลรับเข้า (PO - Purchase Order)
     useEffect(() => { setCurrentDocNo(generateDocNo('IN')); }, [generateDocNo]);
 
-    // 🟢 ระบบซ่อนกล่อง Suggestion เมื่อคลิกที่อื่น
     useEffect(() => {
         function handleClickOutside(event) {
             if (searchRef.current && !searchRef.current.contains(event.target)) {
@@ -32,16 +29,14 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // 🟢 ระบบกรองสินค้าตามคำค้นหา
     const suggestedProducts = products.filter(p => 
         p.code?.toLowerCase().includes(searchQuery.toLowerCase()) || 
         p.name?.toLowerCase().includes(searchQuery.toLowerCase())
-    ).slice(0, 5); // แสดงแค่ 5 รายการ
+    ).slice(0, 5);
 
-    // 🟢 ฟังก์ชันเมื่อคลิกเลือกสินค้าจากคำค้นหา
     const selectProductFromSearch = (product) => {
         setSelectedProduct(product.id);
-        setBuyPrice(product.buyPrice || 0); // ดึงต้นทุนมาแสดง
+        setBuyPrice(product.buyPrice || 0); 
         setSearchQuery(`${product.code} - ${product.name}`); 
         setShowSuggestions(false);
     };
@@ -49,12 +44,15 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
     const handleAddToList = () => {
         const product = products.find(p => p.id === selectedProduct);
         if (!product) return alert('⚠️ โปรดเลือกสินค้าก่อน');
-        if (qty <= 0) return alert('⚠️ จำนวนต้องมากกว่า 0');
+
+        // 🟢 ตรวจสอบค่าว่างของจำนวนก่อนนำไปคำนวณ
+        const finalQty = qty === '' ? 0 : Number(qty);
+        if (finalQty <= 0) return alert('⚠️ จำนวนต้องมากกว่า 0');
 
         const existingIndex = intakeList.findIndex(i => i.productId === product.id);
         if (existingIndex >= 0) {
             const newList = [...intakeList];
-            newList[existingIndex].qty += Number(qty);
+            newList[existingIndex].qty += finalQty;
             newList[existingIndex].total = newList[existingIndex].qty * newList[existingIndex].price;
             setIntakeList(newList);
         } else {
@@ -62,14 +60,13 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                 productId: product.id, 
                 name: product.name, 
                 code: product.code,
-                qty: Number(qty), 
+                qty: finalQty, 
                 price: Number(buyPrice), 
-                total: Number(qty) * Number(buyPrice), 
+                total: finalQty * Number(buyPrice), 
                 unit: product.unit 
             }]);
         }
         
-        // ล้างค่าหลังจากกดเพิ่ม
         setQty(1); 
         setSelectedProduct(''); 
         setBuyPrice(0);
@@ -126,7 +123,6 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
         <div className="p-4 md:p-8 h-full max-w-[1600px] mx-auto">
             <div className="flex flex-col lg:flex-row gap-8 h-full items-start">
                 
-                {/* --- 🟢 ฝั่งซ้าย: ฟอร์มเพิ่มสินค้า --- */}
                 <div className="w-full lg:w-[60%] space-y-6">
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-3">
@@ -140,7 +136,6 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
 
                     <Card className="!p-6 md:!p-8 border-none shadow-xl bg-white rounded-[2.5rem]">
                         
-                        {/* 🟢 ส่วนค้นหาสินค้า (เปลี่ยนจาก Select เป็น Search) */}
                         <div className="flex gap-2 mb-6 relative" ref={searchRef}>
                             <div className="flex-1 relative">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -149,17 +144,16 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                                 <input 
                                     type="text"
                                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold outline-none focus:border-emerald-400 transition-colors"
-                                    placeholder="รหัสสินค้า"
+                                    placeholder="ค้นหาสินค้า"
                                     value={searchQuery}
                                     onChange={(e) => {
                                         setSearchQuery(e.target.value);
-                                        setSelectedProduct(''); // รีเซ็ตการเลือก
+                                        setSelectedProduct(''); 
                                         setShowSuggestions(true);
                                     }}
                                     onFocus={() => setShowSuggestions(true)}
                                 />
                                 
-                                {/* กล่อง Suggestion */}
                                 {showSuggestions && searchQuery.trim() !== '' && (
                                     <div className="absolute z-10 w-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2">
                                         {suggestedProducts.length > 0 ? (
@@ -191,7 +185,7 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                                 if (!p) return alert('❌ ไม่พบสินค้านี้ในระบบ');
                                 setSelectedProduct(p.id);
                                 setBuyPrice(p.buyPrice || 0);
-                                setSearchQuery(`${p.code} - ${p.name}`); // นำชื่อไปใส่ในช่องค้นหา
+                                setSearchQuery(`${p.code} - ${p.name}`); 
                             })}><QrCode /></Button>
                         </div>
 
@@ -206,8 +200,16 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input label="ราคาต้นทุน/หน่วย (฿)" type="number" value={buyPrice} onChange={e => setBuyPrice(Number(e.target.value))} />
-                                    <Input label="จำนวนที่รับเข้า" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
+                                    <Input label="ราคาต้นทุน/หน่วย (฿)" type="number" value={buyPrice} onChange={e => setBuyPrice(e.target.value === '' ? '' : Number(e.target.value))} />
+                                    
+                                    {/* 🟢 แก้ไข: ยอมให้ช่องจำนวนเป็นค่าว่างได้ เพื่อให้ลบและพิมพ์ใหม่สะดวก */}
+                                    <Input label="จำนวนที่รับเข้า" type="number" value={qty} 
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setQty(val === '' ? '' : Math.max(1, Number(val)));
+                                        }} 
+                                    />
+                                    
                                     <Button onClick={handleAddToList} className="col-span-full py-5 text-lg font-black bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200 mt-2">
                                         <Plus size={20} className="inline mr-2"/> เพิ่มเข้ารายการบิล
                                     </Button>
@@ -222,7 +224,6 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                     </Card>
                 </div>
 
-                {/* --- 🟢 ฝั่งขวา: รายการบิลรับเข้า --- */}
                 <aside className="w-full lg:w-[40%] bg-white border border-slate-100 rounded-[2.5rem] flex flex-col h-[600px] lg:h-[calc(100vh-140px)] lg:sticky top-8 shadow-xl overflow-hidden">
                     <div className="p-6 border-b bg-slate-50/50 flex items-center justify-between">
                         <h3 className="font-black text-slate-800 text-sm uppercase tracking-tight flex items-center gap-2">
@@ -259,7 +260,7 @@ export default function StockIntake({ user, products, generateDocNo, handleScanQ
                             <span className="text-4xl font-black italic tracking-tighter text-emerald-400">฿{totalValue.toLocaleString()}</span>
                         </div>
                         <Button 
-                            className="w-full py-5 text-xl font-black shadow-xl shadow-emerald-900/20 bg-emerald-500 hover:bg-emerald-400 text-slate-900 border-none flex items-center justify-center gap-2" 
+                            className="w-full py-5 text-xl font-black shadow-xl shadow-emerald-900/20 bg-emerald-500 hover:bg-emerald-400 text-slate-1000 border-none flex items-center justify-center gap-2" 
                             onClick={handleSaveIntake} 
                             disabled={intakeList.length === 0 || loading}
                         >

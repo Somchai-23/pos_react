@@ -23,14 +23,12 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
     const [showHeldBills, setShowHeldBills] = useState(false);
     const [showMobileCart, setShowMobileCart] = useState(false);
 
-    // 🟢 State ใหม่สำหรับระบบค้นหาสินค้า (Autocomplete)
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchRef = useRef(null);
 
     useEffect(() => { setCurrentDocNo(generateDocNo('OUT')); }, [generateDocNo]);
 
-    // 🟢 ระบบซ่อนกล่อง Suggestion เมื่อคลิกที่อื่น
     useEffect(() => {
         function handleClickOutside(event) {
             if (searchRef.current && !searchRef.current.contains(event.target)) {
@@ -46,12 +44,11 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
         setPointsToUse(0); setIsPaymentStep(false); setReceivedAmount(0);
         setShowReceipt(false); setLastBill(null); setLowStockAlerts([]);
         setCurrentDocNo(generateDocNo('OUT')); setShowMobileCart(false);
-        setSearchQuery(''); setSelectedProduct(''); setPrice(0); // ล้างค่าค้นหา
+        setSearchQuery(''); setSelectedProduct(''); setPrice(0); setQty(1);
     };
 
-    // 🟢 คำนวณยอดก่อนลดและยอดสุทธิ
     const subTotalAmount = cart.reduce((sum, item) => sum + item.total, 0);
-    const finalAmount = subTotalAmount - Number(pointsToUse);
+    const finalAmount = subTotalAmount - Number(pointsToUse || 0);
     const changeAmount = receivedAmount > 0 ? receivedAmount - finalAmount : 0;
 
     const saveTransaction = async () => {
@@ -60,12 +57,8 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
 
         try {
             await runTransaction(db, async (transaction) => {
-                const snapshots = [];
                 for (const item of cart) {
                     const productRef = doc(db, "products", item.productId);
-                    snapshots.push({ item, productRef });
-                }
-                for (const { item, productRef } of snapshots) {
                     transaction.update(productRef, { stock: increment(-Number(item.qty)) });
                 }
                 const billRef = doc(collection(db, "transactions"));
@@ -75,8 +68,8 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                     shopId: currentUser.shopId, 
                     date: new Date().toISOString(),
                     items: cart, 
-                    subTotal: subTotalAmount, // 🟢 บันทึกยอดก่อนลด
-                    pointsDiscount: Number(pointsToUse), // 🟢 บันทึกส่วนลดที่ใช้
+                    subTotal: subTotalAmount,
+                    pointsDiscount: Number(pointsToUse || 0),
                     totalAmount: finalAmount, 
                     receivedAmount: Number(receivedAmount),
                     changeAmount: Number(changeAmount), 
@@ -90,12 +83,9 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                 if (currentMember) {
                     const memberRef = doc(db, "customers", currentMember.id);
                     const earned = Math.floor(finalAmount / (memberSettings?.bahtPerPoint || 20));
-                    transaction.update(memberRef, { points: increment(earned - Number(pointsToUse)) });
+                    transaction.update(memberRef, { points: increment(earned - Number(pointsToUse || 0)) });
                 }
-                setLastBill({ 
-                    ...billData, 
-                    dateFormatted: new Date().toLocaleString('th-TH') 
-                });
+                setLastBill({ ...billData, dateFormatted: new Date().toLocaleString('th-TH') });
             });
             setShowReceipt(true); 
         } catch (error) { alert('❌ เกิดข้อผิดพลาด: ' + error.message); }
@@ -115,38 +105,51 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
         } catch (e) { alert("❌ " + e.message); }
     };
 
-    // 🟢 ระบบกรองสินค้าตามคำค้นหา
     const suggestedProducts = products.filter(p => 
         p.code?.toLowerCase().includes(searchQuery.toLowerCase()) || 
         p.name?.toLowerCase().includes(searchQuery.toLowerCase())
-    ).slice(0, 5); // แสดงแค่ 5 รายการที่ตรงสุด
+    ).slice(0, 5);
 
-    // 🟢 ฟังก์ชันเมื่อคลิกเลือกสินค้าจากคำค้นหา
     const selectProductFromSearch = (product) => {
         setSelectedProduct(product.id);
         setPrice(product.sellPrice || 0);
-        setSearchQuery(`${product.code} - ${product.name}`); // เอาชื่อไปโชว์ในกล่อง
+        setSearchQuery(`${product.code} - ${product.name}`);
         setShowSuggestions(false);
     };
 
     const addToCart = () => {
         const product = products.find(p => p.id === selectedProduct);
         if (!product) return alert('⚠️ โปรดเลือกสินค้าก่อน');
+
+        const finalQty = qty === '' ? 1 : Number(qty);
+        const finalPrice = Number(price || 0);
+
+        if (finalQty <= 0) return alert('⚠️ จำนวนต้องมากกว่า 0');
+
         const currentStock = Number(product.stock || 0); 
         const itemInCart = cart.find(i => i.productId === product.id);
-        if (((itemInCart ? itemInCart.qty : 0) + Number(qty)) > currentStock) return alert(`❌ สินค้าไม่พอขาย!`);
+        
+        if (((itemInCart ? itemInCart.qty : 0) + finalQty) > currentStock) return alert(`❌ สินค้าไม่พอขาย!`);
         
         if (itemInCart) {
-            setCart(cart.map(i => i.productId === product.id ? { ...i, qty: i.qty + Number(qty), total: (i.qty + Number(qty)) * i.price } : i));
+            setCart(cart.map(i => i.productId === product.id ? { ...i, qty: i.qty + finalQty, total: (i.qty + finalQty) * i.price } : i));
         } else {
-            setCart([...cart, { productId: product.id, name: product.name, qty: Number(qty), price: Number(price), total: Number(qty) * Number(price), unit: product.unit }]);
+            setCart([...cart, { productId: product.id, name: product.name, qty: finalQty, price: finalPrice, total: finalQty * finalPrice, unit: product.unit }]);
         }
         
-        // ล้างค่าหลังเพิ่มลงตะกร้า
         setQty(1); 
         setSelectedProduct(''); 
         setPrice(0);
         setSearchQuery('');
+    };
+
+    const onScanResult = (code) => {
+        const p = products.find(prod => prod.code === code);
+        if (!p) return alert('❌ ไม่พบสินค้า');
+        if ((cart.find(i=>i.productId===p.id)?.qty || 0) + 1 > p.stock) return alert(`❌ สินค้าไม่พอขาย!`);
+        setCart(prev => prev.some(i=>i.productId===p.id) ? prev.map(i=>i.productId===p.id?{...i,qty:i.qty+1,total:(i.qty+1)*i.price}:i) : [...prev,{productId:p.id,name:p.name,qty:1,price:Number(p.sellPrice||0),total:Number(p.sellPrice||0),unit:p.unit}]);
+        setSearchQuery('');
+        setSelectedProduct('');
     };
 
     const holdCurrentBill = () => {
@@ -162,35 +165,13 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
         setHeldBills(prev => prev.filter(b => b.id !== bill.id)); setShowHeldBills(false);
     };
 
-    // 🟢 รองรับการสแกน QR แล้วแอดลงตะกร้าทันที หรือเอามาโชว์
-    const onScanResult = (code) => {
-        const p = products.find(prod => prod.code === code);
-        if (!p) return alert('❌ ไม่พบสินค้า');
-        if ((cart.find(i=>i.productId===p.id)?.qty || 0) + 1 > p.stock) return alert(`❌ สินค้าไม่พอขาย!`);
-        
-        // แอดลงตะกร้าให้เลยเพื่อความรวดเร็ว
-        setCart(prev => prev.some(i=>i.productId===p.id) 
-            ? prev.map(i=>i.productId===p.id?{...i,qty:i.qty+1,total:(i.qty+1)*i.price}:i) 
-            : [...prev,{productId:p.id,name:p.name,qty:1,price:Number(p.sellPrice||0),total:Number(p.sellPrice||0),unit:p.unit}]
-        );
-        // ล้างช่องค้นหา
-        setSearchQuery('');
-        setSelectedProduct('');
-    };
-
     return (
         <>
             <style>{`
                 @media print {
                     body * { visibility: hidden !important; }
                     #receipt-print-area, #receipt-print-area * { visibility: visible !important; }
-                    #receipt-print-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        background: white;
-                    }
+                    #receipt-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; }
                 }
             `}</style>
 
@@ -213,7 +194,6 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                             <>
                                 <Card className="!p-6 border-none shadow-sm">
                                     <div className="flex gap-2 mb-4 relative" ref={searchRef}>
-                                        {/* 🟢 1. เปลี่ยน Select เป็น Search Input */}
                                         <div className="flex-1 relative">
                                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                                 <SearchCode size={20} className="text-slate-400" />
@@ -221,26 +201,20 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                             <input 
                                                 type="text"
                                                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold outline-none focus:border-blue-400 transition-colors"
-                                                placeholder="รหัสสินค้า"
+                                                placeholder="ค้นหาสินค้า"
                                                 value={searchQuery}
                                                 onChange={(e) => {
                                                     setSearchQuery(e.target.value);
-                                                    setSelectedProduct(''); // รีเซ็ตการเลือกถ้ามีการพิมพ์ใหม่
+                                                    setSelectedProduct('');
                                                     setShowSuggestions(true);
                                                 }}
                                                 onFocus={() => setShowSuggestions(true)}
                                             />
-                                            
-                                            {/* กล่อง Suggestion */}
                                             {showSuggestions && searchQuery.trim() !== '' && (
                                                 <div className="absolute z-10 w-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2">
                                                     {suggestedProducts.length > 0 ? (
                                                         suggestedProducts.map(p => (
-                                                            <div 
-                                                                key={p.id} 
-                                                                className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 flex justify-between items-center transition-colors"
-                                                                onClick={() => selectProductFromSearch(p)}
-                                                            >
+                                                            <div key={p.id} className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 flex justify-between items-center transition-colors" onClick={() => selectProductFromSearch(p)}>
                                                                 <div>
                                                                     <p className="font-black text-sm text-slate-800">{p.name}</p>
                                                                     <p className="text-[10px] font-mono text-slate-400">{p.code}</p>
@@ -257,13 +231,9 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                                 </div>
                                             )}
                                         </div>
-
-                                        <Button variant="secondary" className="rounded-2xl w-14 h-14" onClick={() => handleScanQR(onScanResult)}>
-                                            <QrCode />
-                                        </Button>
+                                        <Button variant="secondary" className="rounded-2xl w-14 h-14" onClick={() => handleScanQR(onScanResult)}><QrCode /></Button>
                                     </div>
 
-                                    {/* 🟢 แสดงฟอร์มเฉพาะเมื่อเลือกสินค้าจาก Suggestion แล้ว */}
                                     {selectedProduct && (
                                         <div className="space-y-4 animate-in fade-in zoom-in-95">
                                             <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -272,11 +242,17 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                                 </span>
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">
-                                                <Input label="ราคา (฿)" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
-                                                <Input label="จำนวน" type="number" value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value)))} />
-                                                <Button onClick={addToCart} className="col-span-full py-4 font-black text-lg shadow-lg shadow-blue-100">
-                                                    เพิ่มลงตะกร้า
-                                                </Button>
+                                                {/* 🟢 แก้ไข: ล็อกช่องราคาให้แสดงเฉยๆ (readOnly) */}
+                                                <Input label="ราคาขาย (฿)" type="number" value={price} readOnly disabled />
+                                                
+                                                {/* ช่องจำนวนยังคงลบและพิมพ์ใหม่ได้อิสระ */}
+                                                <Input label="จำนวน" type="number" value={qty} 
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setQty(val === '' ? '' : Math.max(1, Number(val)));
+                                                    }} 
+                                                />
+                                                <Button onClick={addToCart} className="col-span-full py-4 font-black text-lg shadow-lg shadow-blue-100">เพิ่มลงตะกร้า</Button>
                                             </div>
                                         </div>
                                     )}
@@ -297,7 +273,13 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                             <div><p className="font-black text-sm">{currentMember.name}</p><p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-0.5">Points: {currentMember.points.toLocaleString()}</p></div>
                                             <div className="text-right">
                                                 <span className="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">ใช้แต้มลด (฿)</span>
-                                                <input type="number" className="w-20 bg-slate-100 rounded-lg p-1.5 text-center font-black outline-none focus:ring-2 focus:ring-blue-400 transition-shadow" value={pointsToUse} onChange={e => setPointsToUse(Math.max(0, Math.min(currentMember.points, Math.min(subTotalAmount + Number(pointsToUse), Number(e.target.value)))))} />
+                                                <input type="number" className="w-20 bg-slate-100 rounded-lg p-1.5 text-center font-black outline-none focus:ring-2 focus:ring-blue-400 transition-shadow" 
+                                                    value={pointsToUse} 
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setPointsToUse(val === '' ? '' : Math.max(0, Math.min(currentMember.points, Math.min(subTotalAmount + Number(pointsToUse || 0), Number(val)))));
+                                                    }} 
+                                                />
                                             </div>
                                         </div>
                                     )}
@@ -314,20 +296,27 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">ยอดชำระสุทธิ</p>
                                 <p className="text-6xl font-black text-blue-600 mb-8 tracking-tighter italic">฿{finalAmount.toLocaleString()}</p>
                                 <div className="space-y-6">
-                                    <input autoFocus type="number" className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2rem] py-6 text-5xl font-black text-center outline-none focus:ring-4 focus:ring-blue-50 transition-all" value={receivedAmount || ''} onChange={(e) => setReceivedAmount(Number(e.target.value))} placeholder="0.00" inputMode="numeric" />
+                                    <input autoFocus type="number" className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2rem] py-6 text-5xl font-black text-center outline-none focus:ring-4 focus:ring-blue-50 transition-all" 
+                                        value={receivedAmount || ''} 
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setReceivedAmount(val === '' ? '' : Number(val));
+                                        }} 
+                                        placeholder="0.00" inputMode="numeric" 
+                                    />
                                     <div className="grid grid-cols-4 gap-3">
-                                        {[20, 100, 500, 1000].map(val => (<button key={val} onClick={() => setReceivedAmount(prev => prev + val)} className="py-4 bg-white border border-slate-200 rounded-2xl font-black text-slate-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm">+{val}</button>))}
+                                        {[20, 100, 500, 1000].map(val => (<button key={val} onClick={() => setReceivedAmount(prev => Number(prev || 0) + val)} className="py-4 bg-white border border-slate-200 rounded-2xl font-black text-slate-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm">+{val}</button>))}
                                         <button onClick={() => setReceivedAmount(finalAmount)} className="col-span-2 py-4 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl font-black hover:bg-emerald-100 transition-colors">จ่ายพอดี</button>
                                         <button onClick={() => setReceivedAmount(0)} className="col-span-2 py-4 bg-red-50 text-red-500 border border-red-100 rounded-2xl font-black hover:bg-red-100 transition-colors">ล้างยอด</button>
                                     </div>
-                                    <div className={`p-6 rounded-[2rem] border-2 transition-all ${receivedAmount >= finalAmount ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
+                                    <div className={`p-6 rounded-[2rem] border-2 transition-all ${Number(receivedAmount || 0) >= finalAmount ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">เงินทอน</p>
-                                        <p className={`text-4xl font-black ${receivedAmount >= finalAmount ? 'text-emerald-600' : 'text-slate-300'}`}>฿{changeAmount.toLocaleString()}</p>
+                                        <p className={`text-4xl font-black ${Number(receivedAmount || 0) >= finalAmount ? 'text-emerald-600' : 'text-slate-300'}`}>฿{changeAmount.toLocaleString()}</p>
                                     </div>
                                     
                                     <div className="lg:hidden pt-4 pb-2">
-                                        <Button className="w-full py-5 text-xl font-black shadow-xl shadow-blue-200" onClick={saveTransaction} disabled={receivedAmount < finalAmount}>
-                                            {receivedAmount < finalAmount ? 'ระบุเงินรับไม่พอ' : 'ยืนยันและจบบิล'}
+                                        <Button className="w-full py-5 text-xl font-black shadow-xl shadow-blue-200" onClick={saveTransaction} disabled={Number(receivedAmount || 0) < finalAmount}>
+                                            {Number(receivedAmount || 0) < finalAmount ? 'ระบุเงินรับไม่พอ' : 'ยืนยันและจบบิล'}
                                         </Button>
                                     </div>
                                 </div>
@@ -356,7 +345,6 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                             )}
                         </div>
                         <div className="p-8 bg-slate-900 text-white space-y-4">
-                            {/* 🟢 แสดงส่วนลดในตะกร้าด้านขวา */}
                             {pointsToUse > 0 && (
                                 <div className="flex justify-between items-center text-sm font-bold text-red-400 mb-2 border-b border-slate-700 pb-2">
                                     <span>หักส่วนลดแต้มสะสม</span>
@@ -368,21 +356,20 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                 <span className="text-4xl font-black text-blue-400 italic tracking-tighter">฿{finalAmount.toLocaleString()}</span>
                             </div>
                             <div className="flex gap-3 pt-2">
-                                {!isPaymentStep && <Button variant="secondary" className="flex-1 py-5 font-black bg-slate-800 text-slate-300 border-none hover:bg-slate-700" onClick={holdCurrentBill} disabled={cart.length === 0}><PauseCircle size={20} /> พักบิล</Button>}
-                                <Button className={`py-5 text-xl font-black shadow-xl shadow-blue-900/50 border-none ${isPaymentStep ? 'w-full' : 'flex-[2]'}`} onClick={() => { if(!isPaymentStep) setIsPaymentStep(true); else saveTransaction(); }} disabled={cart.length === 0 || (isPaymentStep && receivedAmount < finalAmount)}>
-                                    {isPaymentStep ? (receivedAmount < finalAmount ? 'เงินไม่พอ' : 'ยืนยันบิล') : 'ชำระเงิน'}
+                                {!isPaymentStep && <Button variant="secondary" className="flex-1 py-5 font-black bg-slate-800 text-slate-600 border-none hover:bg-slate-700" onClick={holdCurrentBill} disabled={cart.length === 0}><PauseCircle size={20} /> พักบิล</Button>}
+                                <Button className={`py-5 text-xl font-black shadow-x1 shadow-blue-900/50 border-none ${isPaymentStep ? 'w-full' : 'flex-[2]'}`} onClick={() => { if(!isPaymentStep) setIsPaymentStep(true); else saveTransaction(); }} disabled={cart.length === 0 || (isPaymentStep && Number(receivedAmount || 0) < finalAmount)}>
+                                    {isPaymentStep ? (Number(receivedAmount || 0) < finalAmount ? 'เงินไม่พอ' : 'ยืนยันบิล') : 'ชำระเงิน'}
                                 </Button>
                             </div>
                         </div>
                     </aside>
                 </div>
 
-                {/* 🟢 เรียกใช้คอมโพเนนต์ใบเสร็จ และส่งข้อมูลที่อัปเดตแล้วไปให้ */}
                 {showReceipt && lastBill && (
                     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 print:hidden">
                         <Card className="max-w-md w-full p-8 text-center animate-in zoom-in-95 shadow-2xl relative border-none rounded-[2.5rem]">
                             <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner"><CheckCircle size={48} /></div>
-                            <h2 className="text-3xl font-black text-slate-800 mb-2 italic tracking-tighter uppercase">สำรเร็จ!</h2>
+                            <h2 className="text-3xl font-black text-slate-800 mb-2 italic tracking-tighter uppercase">สำเร็จ!</h2>
                             <p className="text-slate-400 text-sm mb-6 font-bold tracking-widest uppercase">Bill No: {lastBill.docNo}</p>
                             <div className="space-y-3">
                                 <Button className="w-full py-5 text-lg font-black flex items-center justify-center gap-3 shadow-xl shadow-blue-100 border-none" onClick={() => window.print()}><Printer size={24} /> พิมพ์ใบเสร็จ</Button>
