@@ -242,10 +242,7 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                                 </span>
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">
-                                                {/* 🟢 แก้ไข: ล็อกช่องราคาให้แสดงเฉยๆ (readOnly) */}
                                                 <Input label="ราคาขาย (฿)" type="number" value={price} readOnly disabled />
-                                                
-                                                {/* ช่องจำนวนยังคงลบและพิมพ์ใหม่ได้อิสระ */}
                                                 <Input label="จำนวน" type="number" value={qty} 
                                                     onChange={e => {
                                                         const val = e.target.value;
@@ -365,6 +362,112 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                     </aside>
                 </div>
 
+                {/* 🟢 แถบสรุปยอดด้านล่างสำหรับมือถือ (แสดงเฉพาะตอนจอเล็กและไม่ได้โชว์บิล) */}
+                {!showMobileCart && !showReceipt && !isPaymentStep && (
+                    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 lg:hidden z-[90] shadow-[0_-10px_40px_rgba(0,0,0,0.05)] pb-safe animate-in slide-in-from-bottom-full duration-300">
+                        <div className="flex justify-between items-center max-w-md mx-auto">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ยอดสุทธิ ({cart.length} รายการ)</span>
+                                <span className="text-2xl font-black text-blue-600 italic tracking-tighter">฿{finalAmount.toLocaleString()}</span>
+                            </div>
+                            <Button onClick={() => setShowMobileCart(true)} className="px-6 py-4 rounded-2xl font-black shadow-lg shadow-blue-200">
+                                <ShoppingCart size={20} className="inline mr-2" /> ดูตะกร้า
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {/* 🟢 Modal ตะกร้าสินค้าสำหรับมือถือ */}
+                {showMobileCart && (
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] lg:hidden animate-in fade-in duration-200" onClick={() => setShowMobileCart(false)}>
+                        <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[2.5rem] h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-full duration-300" onClick={e => e.stopPropagation()}>
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-[2.5rem]">
+                                <h3 className="font-black text-slate-800 text-base uppercase tracking-tight flex items-center gap-2">
+                                    <ShoppingCart size={20} /> ตะกร้าสินค้า
+                                </h3>
+                                <button onClick={() => setShowMobileCart(false)} className="w-10 h-10 bg-white text-slate-500 rounded-full flex items-center justify-center hover:bg-slate-100 shadow-sm border border-slate-200 transition-colors">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                {cart.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-300 font-bold text-sm uppercase tracking-widest opacity-50">
+                                        <ShoppingCart size={48} className="mb-4" /> ตะกร้าว่างเปล่า
+                                    </div>
+                                ) : (
+                                    cart.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center group bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                            <div className="flex items-center gap-3">
+                                                <button onClick={() => setCart(cart.filter((_, i) => i !== idx))} className="w-8 h-8 text-red-300 hover:text-red-500 bg-white rounded-full flex items-center justify-center shadow-sm transition-all border border-slate-100">
+                                                    <Trash2 size={14}/>
+                                                </button>
+                                                <div>
+                                                    <p className="font-black text-sm text-slate-800">{item.name}</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold mt-0.5">{item.qty} x ฿{item.price.toLocaleString()}</p>
+                                                </div>
+                                            </div>
+                                            <span className="font-black text-slate-800 text-base">฿{item.total.toLocaleString()}</span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                            
+                            <div className="p-8 bg-slate-900 text-white space-y-4 rounded-t-[2.5rem]">
+                                {pointsToUse > 0 && (
+                                    <div className="flex justify-between items-center text-sm font-bold text-red-400 mb-2 border-b border-slate-700 pb-2">
+                                        <span>หักส่วนลดแต้มสะสม</span>
+                                        <span>- ฿{Number(pointsToUse).toLocaleString()}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-end pb-2">
+                                    <span className="text-slate-400 font-black uppercase text-[10px] tracking-widest">ยอดสุทธิ</span>
+                                    <span className="text-4xl font-black text-blue-400 italic tracking-tighter">฿{finalAmount.toLocaleString()}</span>
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <Button variant="secondary" className="flex-1 py-5 font-black bg-slate-800 text-slate-400 border-none hover:bg-slate-700" onClick={() => { holdCurrentBill(); setShowMobileCart(false); }} disabled={cart.length === 0}>
+                                        <PauseCircle size={20} /> พักบิล
+                                    </Button>
+                                    <Button className="flex-[2] py-5 text-xl font-black shadow-xl shadow-blue-900/50 border-none" onClick={() => { setShowMobileCart(false); setIsPaymentStep(true); }} disabled={cart.length === 0}>
+                                        ชำระเงิน
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 🟢 Modal บิลที่พักไว้ (Held Bills) ที่หายไป */}
+                {showHeldBills && (
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setShowHeldBills(false)}>
+                        <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                <h3 className="font-black text-slate-800 flex items-center gap-2"><PauseCircle className="text-orange-500"/> บิลที่พักไว้</h3>
+                                <button onClick={() => setShowHeldBills(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+                            </div>
+                            <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                                {heldBills.length === 0 ? (
+                                    <div className="text-center py-10 text-slate-400 font-bold">ไม่มีบิลที่พักไว้</div>
+                                ) : (
+                                    heldBills.map((bill, idx) => (
+                                        <div key={bill.id} className="p-4 bg-white border-2 border-slate-100 hover:border-blue-300 rounded-2xl cursor-pointer transition-all flex justify-between items-center group" onClick={() => recallBill(bill)}>
+                                            <div>
+                                                <p className="font-black text-slate-800 text-sm">บิล #{idx + 1} <span className="text-[10px] text-slate-400 font-normal ml-2">{new Date(bill.timestamp).toLocaleTimeString('th-TH')}</span></p>
+                                                <p className="text-[10px] text-slate-500 font-bold mt-1">{bill.cart.length} รายการ • {bill.currentMember ? `สมาชิก: ${bill.currentMember.name}` : 'ลูกค้าทั่วไป'}</p>
+                                            </div>
+                                            <div className="text-right flex items-center gap-3">
+                                                <span className="font-black text-blue-600 text-lg">฿{bill.totalAmount.toLocaleString()}</span>
+                                                <button onClick={(e) => { e.stopPropagation(); setHeldBills(prev => prev.filter(b => b.id !== bill.id)); }} className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"><Trash2 size={14}/></button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 🟢 Modal ใบเสร็จรับเงินเมื่อทำรายการสำเร็จ */}
                 {showReceipt && lastBill && (
                     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 print:hidden">
                         <Card className="max-w-md w-full p-8 text-center animate-in zoom-in-95 shadow-2xl relative border-none rounded-[2.5rem]">
