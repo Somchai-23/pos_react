@@ -51,9 +51,33 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
     const finalAmount = subTotalAmount - Number(pointsToUse || 0);
     const changeAmount = receivedAmount > 0 ? receivedAmount - finalAmount : 0;
 
+    // 🟢 ฟังก์ชันกลางเช็คสต็อกก่อนรับเงิน
+    const validateCartStock = () => {
+        for (const item of cart) {
+            const currentProduct = products.find(p => p.id === item.productId);
+            if (!currentProduct || item.qty > (currentProduct.stock || 0)) {
+                alert(`❌ ไม่สามารถทำรายการได้!\nสินค้า "${item.name}" สต็อกไม่พอขาย\n(ต้องการ ${item.qty} แต่ในคลังเหลือ ${currentProduct?.stock || 0} ชิ้น)\nกรุณาแก้ไขจำนวนสินค้าก่อนครับ`);
+                return false; 
+            }
+        }
+        return true; 
+    };
+
+    // 🟢 เช็คสต็อกก่อนกดไปหน้าชำระเงิน
+    const handleProceedToPayment = () => {
+        if (!validateCartStock()) return; 
+        setIsPaymentStep(true); // ✅ แก้ไขจากที่เรียกตัวเอง เป็นการเปลี่ยนสถานะหน้าจอ           
+    };
+
     const saveTransaction = async () => {
         if (cart.length === 0) return;
         if (receivedAmount < finalAmount) return alert('⚠️ ยอดเงินไม่เพียงพอ');
+
+        // 🟢 เช็คสต็อกอีกรอบก่อนตัดฐานข้อมูล เผื่อมีคนแย่งขายตอนค้างหน้าชำระเงิน
+        if (!validateCartStock()) {
+            setIsPaymentStep(false); 
+            return;
+        }
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -354,7 +378,7 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                             </div>
                             <div className="flex gap-3 pt-2">
                                 {!isPaymentStep && <Button variant="secondary" className="flex-1 py-5 font-black bg-slate-800 text-slate-600 border-none hover:bg-slate-700" onClick={holdCurrentBill} disabled={cart.length === 0}><PauseCircle size={20} /> พักบิล</Button>}
-                                <Button className={`py-5 text-xl font-black shadow-x1 shadow-blue-900/50 border-none ${isPaymentStep ? 'w-full' : 'flex-[2]'}`} onClick={() => { if(!isPaymentStep) setIsPaymentStep(true); else saveTransaction(); }} disabled={cart.length === 0 || (isPaymentStep && Number(receivedAmount || 0) < finalAmount)}>
+                                <Button className={`py-5 text-xl font-black shadow-x1 shadow-blue-900/50 border-none ${isPaymentStep ? 'w-full' : 'flex-[2]'}`} onClick={() => { if(!isPaymentStep) handleProceedToPayment(); else saveTransaction(); }} disabled={cart.length === 0 || (isPaymentStep && Number(receivedAmount || 0) < finalAmount)}>
                                     {isPaymentStep ? (Number(receivedAmount || 0) < finalAmount ? 'เงินไม่พอ' : 'ยืนยันบิล') : 'ชำระเงิน'}
                                 </Button>
                             </div>
@@ -362,7 +386,7 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                     </aside>
                 </div>
 
-                {/* 🟢 แถบสรุปยอดด้านล่างสำหรับมือถือ (แสดงเฉพาะตอนจอเล็กและไม่ได้โชว์บิล) */}
+                {/* 🟢 แถบสรุปยอดด้านล่างสำหรับมือถือ */}
                 {!showMobileCart && !showReceipt && !isPaymentStep && (
                     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 lg:hidden z-[90] shadow-[0_-10px_40px_rgba(0,0,0,0.05)] pb-safe animate-in slide-in-from-bottom-full duration-300">
                         <div className="flex justify-between items-center max-w-md mx-auto">
@@ -428,7 +452,7 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                                     <Button variant="secondary" className="flex-1 py-5 font-black bg-slate-800 text-slate-400 border-none hover:bg-slate-700" onClick={() => { holdCurrentBill(); setShowMobileCart(false); }} disabled={cart.length === 0}>
                                         <PauseCircle size={20} /> พักบิล
                                     </Button>
-                                    <Button className="flex-[2] py-5 text-xl font-black shadow-xl shadow-blue-900/50 border-none" onClick={() => { setShowMobileCart(false); setIsPaymentStep(true); }} disabled={cart.length === 0}>
+                                    <Button className="flex-[2] py-5 text-xl font-black shadow-xl shadow-blue-900/50 border-none" onClick={() => { setShowMobileCart(false); handleProceedToPayment(); }} disabled={cart.length === 0}>
                                         ชำระเงิน
                                     </Button>
                                 </div>
@@ -437,7 +461,7 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
                     </div>
                 )}
 
-                {/* 🟢 Modal บิลที่พักไว้ (Held Bills) ที่หายไป */}
+                {/* 🟢 Modal บิลที่พักไว้ (Held Bills) */}
                 {showHeldBills && (
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setShowHeldBills(false)}>
                         <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
