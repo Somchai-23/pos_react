@@ -56,7 +56,7 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
         for (const item of cart) {
             const currentProduct = products.find(p => p.id === item.productId);
             if (!currentProduct || item.qty > (currentProduct.stock || 0)) {
-                alert(`❌ ไม่สามารถทำรายการได้!\nสินค้า "${item.name}" สต็อกไม่พอขาย\n(ต้องการ ${item.qty} แต่ในคลังเหลือ ${currentProduct?.stock || 0} ชิ้น)\nกรุณาแก้ไขจำนวนสินค้าก่อนครับ`);
+                alert(`❌ ไม่สามารถทำรายการได้!\nสินค้า "${item.name}" ในสต็อกไม่พอขาย`);
                 return false; 
             }
         }

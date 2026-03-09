@@ -24,9 +24,10 @@ export default function ReportView({ products = [], transactions = [], calculate
         });
     };
 
-    // 🟢 1. คำนวณ Stats ด้านบน (ยอดขาย, ยอดซื้อ, กำไร/ขาดทุน)
+    // 🟢 1. คำนวณ Stats ทั้ง "วันนี้" และ "ยอดรวมทั้งหมด"
     const dashboardStats = useMemo(() => {
         let todaySales = 0, todayPurchases = 0, todayProfit = 0;
+        let totalSales = 0, totalPurchases = 0, totalProfit = 0; // ยอดรวมทั้งหมด
         const today = new Date();
 
         (transactions || []).forEach(t => {
@@ -34,19 +35,30 @@ export default function ReportView({ products = [], transactions = [], calculate
             const d = new Date(t.date);
             if (isNaN(d.getTime())) return; 
 
-            if (d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear()) {
-                if (t.type === 'IN') {
-                    todayPurchases += (t.totalAmount || 0);
-                }
-                if (t.type === 'OUT') {
-                    todaySales += (t.totalAmount || 0);
-                    let totalCost = 0;
-                    (t.items || []).forEach(item => {
-                        const product = products.find(p => p.id === item.productId);
-                        const costPrice = product ? Number(product.buyPrice || 0) : 0;
-                        totalCost += (costPrice * item.qty);
-                    });
-                    todayProfit += ((t.totalAmount || 0) - totalCost);
+            const isToday = d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+
+            if (t.type === 'IN') {
+                totalPurchases += (t.totalAmount || 0); // บวกเข้ายอดรวมทั้งหมด
+                if (isToday) todayPurchases += (t.totalAmount || 0); // บวกเข้ายอดวันนี้
+            }
+            
+            if (t.type === 'OUT') {
+                totalSales += (t.totalAmount || 0); // บวกยอดขายรวมทั้งหมด
+                
+                // คำนวณต้นทุนบิล
+                let billCost = 0;
+                (t.items || []).forEach(item => {
+                    const product = products.find(p => p.id === item.productId);
+                    const costPrice = product ? Number(product.buyPrice || 0) : 0;
+                    billCost += (costPrice * item.qty);
+                });
+                
+                const currentProfit = (t.totalAmount || 0) - billCost;
+                totalProfit += currentProfit; // บวกกำไรรวมทั้งหมด
+
+                if (isToday) {
+                    todaySales += (t.totalAmount || 0); // บวกยอดขายวันนี้
+                    todayProfit += currentProfit; // บวกกำไรวันนี้
                 }
             }
         });
@@ -58,10 +70,13 @@ export default function ReportView({ products = [], transactions = [], calculate
             else if (s <= (p.minStock || 5)) low++;
         });
 
-        return { todaySales, todayPurchases, todayProfit, lowStockCount: low, outOfStockCount: out, totalProducts: products.length };
+        return { 
+            todaySales, todayPurchases, todayProfit, 
+            totalSales, totalPurchases, totalProfit, // ส่งค่ารวมทั้งหมดออกไปใช้
+            lowStockCount: low, outOfStockCount: out, totalProducts: products.length 
+        };
     }, [transactions, products, calculateStock]);
 
-    // 🟢 2. ดึงข้อมูลประวัติแยกตามวัน/สัปดาห์/เดือน สำหรับทำกราฟ
     const getChartData = (type) => {
         const filtered = (transactions || []).filter(t => t.type === type);
         const grouped = filtered.reduce((acc, curr) => {
@@ -91,7 +106,6 @@ export default function ReportView({ products = [], transactions = [], calculate
             
             acc[key].totalAmount += (curr.totalAmount || 0);
             
-            // คำนวณกำไร/ขาดทุน (ใช้เฉพาะกราฟ OUT)
             if (type === 'OUT') {
                 let billCost = 0;
                 (curr.items || []).forEach(item => {
@@ -115,10 +129,8 @@ export default function ReportView({ products = [], transactions = [], calculate
     
     const maxSalesChart = salesChartData.length > 0 ? Math.max(...salesChartData.map(d => d.totalAmount)) : 0;
     const maxPurchaseChart = purchaseChartData.length > 0 ? Math.max(...purchaseChartData.map(d => d.totalAmount)) : 0;
-    // หาค่ากำไร/ขาดทุนที่มากที่สุด (เอาค่า Absolute มาเป็นเกณฑ์ตั้งเสากราฟ)
-    const maxAbsProfitChart = salesChartData.length > 0 ? Math.max(...salesChartData.map(d => Math.abs(d.totalProfit)), 0) : 0;
+    const maxProfitChart = salesChartData.length > 0 ? Math.max(...salesChartData.map(d => Math.max(d.totalProfit, 0))) : 0;
 
-    // 🟢 3. คำนวณข้อมูลสินค้าขายดี และ กราฟวงกลม
     const topSellers = useMemo(() => {
         const sales = (transactions || []).filter(t => t.type === 'OUT');
         const summary = {};
@@ -142,7 +154,7 @@ export default function ReportView({ products = [], transactions = [], calculate
         const totalRevenue = topSellers.reduce((sum, item) => sum + item.totalRevenue, 0);
         if (totalRevenue === 0) return { data: [], total: 0, gradient: '' };
 
-        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#94a3b8']; // น้ำเงิน, เขียว, ส้ม, ม่วง, เทา
+        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#94a3b8']; 
         const top4 = topSellers.slice(0, 4);
         const others = topSellers.slice(4);
         const othersRevenue = others.reduce((sum, item) => sum + item.totalRevenue, 0);
@@ -278,42 +290,69 @@ export default function ReportView({ products = [], transactions = [], calculate
             {viewLevel === 'summary' && reportTab === 'dashboard' && (
                 <div className="space-y-6 animate-in fade-in duration-500 mt-4">
                     
-                    {/* กล่องสรุป 4 กล่อง */}
+                    {/* 🟢 กล่องสรุป 4 กล่อง (มีแถบ Total ด้านล่าง) */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <Card className="!p-5 border-none shadow-md bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-[2rem]">
-                            <p className="text-[10px] font-black uppercase opacity-80 mb-2 flex items-center gap-1"><TrendingUp size={14}/> ยอดขายวันนี้</p>
-                            <h3 className="text-3xl font-black">฿{dashboardStats.todaySales.toLocaleString()}</h3>
+                        
+                        {/* 1. กล่องยอดขาย */}
+                        <Card className="!p-5 border-none shadow-md bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-[2rem] flex flex-col justify-between min-h-[140px]">
+                            <div>
+                                <p className="text-[10px] font-black uppercase opacity-80 mb-1 flex items-center gap-1"><TrendingUp size={14}/> ยอดขายวันนี้</p>
+                                <h3 className="text-3xl font-black">฿{dashboardStats.todaySales.toLocaleString()}</h3>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-white/20 flex justify-between items-center">
+                                <span className="text-[9px] font-bold opacity-80 uppercase tracking-widest">รวมทั้งหมด</span>
+                                <span className="text-sm font-black">฿{dashboardStats.totalSales.toLocaleString()}</span>
+                            </div>
                         </Card>
                         
-                        {/* 🟢 กล่องกำไร/ขาดทุนวันนี้ */}
-                        <Card className={`!p-5 border-none shadow-md bg-gradient-to-br text-white rounded-[2rem] ${dashboardStats.todayProfit < 0 ? 'from-red-500 to-red-700' : 'from-indigo-500 to-purple-600'}`}>
-                            <p className="text-[10px] font-black uppercase opacity-80 mb-2 flex items-center gap-1">
-                                <DollarSign size={14}/> {dashboardStats.todayProfit < 0 ? 'ขาดทุนวันนี้ (Loss)' : 'กำไรวันนี้ (Profit)'}
-                            </p>
-                            <h3 className="text-3xl font-black">
-                                {dashboardStats.todayProfit < 0 ? '-' : ''}฿{Math.abs(dashboardStats.todayProfit).toLocaleString()}
-                            </h3>
+                        {/* 2. กล่องกำไร */}
+                        <Card className={`!p-5 border-none shadow-md bg-gradient-to-br text-white rounded-[2rem] flex flex-col justify-between min-h-[140px] ${dashboardStats.todayProfit < 0 ? 'from-red-500 to-red-700' : 'from-indigo-500 to-purple-600'}`}>
+                            <div>
+                                <p className="text-[10px] font-black uppercase opacity-80 mb-1 flex items-center gap-1">
+                                    <DollarSign size={14}/> {dashboardStats.todayProfit < 0 ? 'ขาดทุนวันนี้' : 'กำไรวันนี้'}
+                                </p>
+                                <h3 className="text-3xl font-black">
+                                    {dashboardStats.todayProfit < 0 ? '-' : ''}฿{Math.abs(dashboardStats.todayProfit).toLocaleString()}
+                                </h3>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-white/20 flex justify-between items-center">
+                                <span className="text-[9px] font-bold opacity-80 uppercase tracking-widest">สุทธิทั้งหมด</span>
+                                <span className="text-sm font-black">{dashboardStats.totalProfit < 0 ? '-' : ''}฿{Math.abs(dashboardStats.totalProfit).toLocaleString()}</span>
+                            </div>
                         </Card>
 
-                        <Card className="!p-5 border-none shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white rounded-[2rem]">
-                            <p className="text-[10px] font-black uppercase opacity-80 mb-2 flex items-center gap-1"><ArrowDownLeft size={14}/> ยอดซื้อเข้าวันนี้</p>
-                            <h3 className="text-3xl font-black">฿{dashboardStats.todayPurchases.toLocaleString()}</h3>
+                        {/* 3. กล่องซื้อเข้า */}
+                        <Card className="!p-5 border-none shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white rounded-[2rem] flex flex-col justify-between min-h-[140px]">
+                            <div>
+                                <p className="text-[10px] font-black uppercase opacity-80 mb-1 flex items-center gap-1"><ArrowDownLeft size={14}/> ยอดซื้อเข้าวันนี้</p>
+                                <h3 className="text-3xl font-black">฿{dashboardStats.todayPurchases.toLocaleString()}</h3>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-white/20 flex justify-between items-center">
+                                <span className="text-[9px] font-bold opacity-80 uppercase tracking-widest">รวมทั้งหมด</span>
+                                <span className="text-sm font-black">฿{dashboardStats.totalPurchases.toLocaleString()}</span>
+                            </div>
                         </Card>
 
-                        <Card className="!p-5 border-none shadow-md bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-[2rem]">
-                            <p className="text-[10px] font-black uppercase opacity-80 mb-2 flex items-center gap-1"><AlertCircle size={14}/> สินค้าใกล้หมด</p>
-                            <h3 className="text-3xl font-black">{dashboardStats.lowStockCount + dashboardStats.outOfStockCount} <span className="text-sm font-bold">รายการ</span></h3>
+                        {/* 4. กล่องสถานะสินค้า */}
+                        <Card className="!p-5 border-none shadow-md bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-[2rem] flex flex-col justify-between min-h-[140px]">
+                            <div>
+                                <p className="text-[10px] font-black uppercase opacity-80 mb-1 flex items-center gap-1"><AlertCircle size={14}/> สินค้าใกล้หมด/หมด</p>
+                                <h3 className="text-3xl font-black">{dashboardStats.lowStockCount + dashboardStats.outOfStockCount} <span className="text-sm font-bold opacity-80">รายการ</span></h3>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-white/20 flex justify-between items-center">
+                                <span className="text-[9px] font-bold opacity-80 uppercase tracking-widest">จำนวนสินค้าในร้าน</span>
+                                <span className="text-sm font-black">{dashboardStats.totalProducts} <span className="text-[10px] opacity-80">รายการ</span></span>
+                            </div>
                         </Card>
                     </div>
 
-                    {/* กราฟ 4 ตัว */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         
                         {/* 1. 📈 กราฟยอดขาย (Sales) */}
                         <Card className="!p-6 border-none shadow-sm bg-white rounded-[2.5rem]">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="font-black text-slate-800 text-sm flex items-center gap-2 uppercase tracking-widest">
-                                    <BarChart2 className="text-blue-600" size={20}/> แนวโน้มยอดขาย (Sales)
+                                    <BarChart2 className="text-blue-600" size={20}/> แนวโน้มยอดขาย
                                 </h3>
                                 <div className="text-right">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase">ยอดสูงสุด</p>
@@ -346,7 +385,7 @@ export default function ReportView({ products = [], transactions = [], calculate
                         <Card className="!p-6 border-none shadow-sm bg-white rounded-[2.5rem]">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="font-black text-slate-800 text-sm flex items-center gap-2 uppercase tracking-widest">
-                                    <ArrowDownLeft className="text-emerald-500" size={20}/> แนวโน้มซื้อเข้า (Purchase)
+                                    <ArrowDownLeft className="text-emerald-500" size={20}/> แนวโน้มซื้อเข้า
                                 </h3>
                                 <div className="text-right">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase">ซื้อเข้าสูงสุด</p>
@@ -375,50 +414,35 @@ export default function ReportView({ products = [], transactions = [], calculate
                             </div>
                         </Card>
 
-                        {/* 3. 📈 กราฟกำไรและขาดทุน (Bidirectional Bar Chart) */}
+                        {/* 3. 📈 กราฟกำไร (Profit Only) */}
                         <Card className="!p-6 border-none shadow-sm bg-white rounded-[2.5rem]">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="font-black text-slate-800 text-sm flex items-center gap-2 uppercase tracking-widest">
-                                    <DollarSign className="text-purple-600" size={20}/> แนวโน้มกำไรและขาดทุน
+                                    <DollarSign className="text-purple-600" size={20}/> แนวโน้มกำไรสุทธิ
                                 </h3>
                                 <div className="text-right">
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase">กำไร/ขาดทุนสูงสุด</p>
-                                    <p className="text-sm font-black text-purple-600">฿{maxAbsProfitChart.toLocaleString()}</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase">กำไรสูงสุด</p>
+                                    <p className="text-sm font-black text-purple-600">฿{maxProfitChart.toLocaleString()}</p>
                                 </div>
                             </div>
-                            <div className="h-48 flex items-center gap-2 overflow-x-auto hide-scroll pb-2 border-b border-dashed border-slate-200">
+                            <div className="h-48 flex items-end gap-2 overflow-x-auto hide-scroll pb-2 border-b border-dashed border-slate-200">
                                 {salesChartData.length === 0 ? (
                                     <div className="w-full h-full flex items-center justify-center text-slate-300 font-bold uppercase text-xs">ไม่มีข้อมูลกำไร</div>
                                 ) : (
                                     [...salesChartData].reverse().map((item, idx) => {
                                         const isLoss = item.totalProfit < 0;
-                                        const heightPercent = maxAbsProfitChart > 0 ? (Math.abs(item.totalProfit) / maxAbsProfitChart) * 100 : 0;
+                                        const displayProfit = Math.max(item.totalProfit, 0);
+                                        const heightPercent = maxProfitChart > 0 ? (displayProfit / maxProfitChart) * 100 : 0;
 
                                         return (
-                                            <div key={idx} className="flex flex-col items-center justify-center h-full flex-1 min-w-[36px] group cursor-pointer relative" onClick={() => { setSelectedPeriod(item); setViewLevel('dateDetail'); }}>
-                                                {/* ส่วนกำไร (ด้านบนเส้นศูนย์) */}
-                                                <div className="w-full h-[45%] flex items-end justify-center relative">
-                                                    {!isLoss && (
-                                                        <div className="w-full max-w-[24px] rounded-t-md bg-purple-100 group-hover:bg-purple-600 transition-all duration-500 ease-out" style={{ height: `${Math.max(heightPercent, 5)}%` }}></div>
-                                                    )}
+                                            <div key={idx} className="flex flex-col items-center justify-end h-full flex-1 min-w-[36px] group cursor-pointer" onClick={() => { setSelectedPeriod(item); setViewLevel('dateDetail'); }}>
+                                                <div className="relative w-full flex justify-center h-full items-end">
+                                                    <div className={`absolute -top-8 text-white text-[10px] font-bold py-1.5 px-2 rounded-xl opacity-0 group-hover:opacity-100 whitespace-nowrap z-10 transition-all shadow-lg pointer-events-none ${isLoss ? 'bg-red-500' : 'bg-slate-900'}`}>
+                                                        {isLoss ? 'ขาดทุน: -' : 'กำไร: '}฿{Math.abs(item.totalProfit).toLocaleString()}
+                                                    </div>
+                                                    <div className={`w-full max-w-[28px] rounded-t-xl transition-all duration-500 ease-out ${isLoss ? 'bg-red-100 group-hover:bg-red-500' : 'bg-purple-100 group-hover:bg-purple-600'}`} style={{ height: `${Math.max(heightPercent, 2)}%` }}></div>
                                                 </div>
-                                                
-                                                {/* เส้นแบ่งกลาง และ วันที่ */}
-                                                <div className="w-full h-[10%] flex items-center justify-center z-10 relative">
-                                                    <div className="absolute w-full h-[1px] bg-slate-100"></div>
-                                                    <span className="text-[8px] text-slate-400 font-bold uppercase bg-white px-1 relative">{item.shortLabel}</span>
-                                                </div>
-
-                                                {/* ส่วนขาดทุน (ด้านล่างเส้นศูนย์) */}
-                                                <div className="w-full h-[45%] flex items-start justify-center relative">
-                                                    {isLoss && (
-                                                        <div className="w-full max-w-[24px] rounded-b-md bg-red-100 group-hover:bg-red-500 transition-all duration-500 ease-out" style={{ height: `${Math.max(heightPercent, 5)}%` }}></div>
-                                                    )}
-                                                </div>
-
-                                                <div className={`absolute ${isLoss ? 'top-4' : 'bottom-4'} bg-slate-900 text-white text-[10px] font-bold py-1.5 px-2 rounded-xl opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none shadow-lg`}>
-                                                    {isLoss ? 'ขาดทุน: -' : 'กำไร: '}฿{Math.abs(item.totalProfit).toLocaleString()}
-                                                </div>
+                                                <span className="text-[9px] text-slate-400 font-bold mt-3 truncate w-full text-center uppercase">{item.shortLabel}</span>
                                             </div>
                                         );
                                     })
@@ -434,7 +458,6 @@ export default function ReportView({ products = [], transactions = [], calculate
                             <div className="flex-1 flex flex-col sm:flex-row items-center justify-center gap-8">
                                 {pieChart.data.length > 0 ? (
                                     <>
-                                        {/* วงกลม Donut Chart สร้างด้วย CSS Conic Gradient */}
                                         <div className="relative w-36 h-36 rounded-full shadow-inner border border-slate-50 flex-shrink-0" style={{ background: `conic-gradient(${pieChart.gradient})` }}>
                                             <div className="absolute inset-4 bg-white rounded-full flex items-center justify-center shadow-sm">
                                                 <div className="text-center">
@@ -444,7 +467,6 @@ export default function ReportView({ products = [], transactions = [], calculate
                                             </div>
                                         </div>
                                         
-                                        {/* รายละเอียดแต่ละสี (Legend) */}
                                         <div className="space-y-3 w-full">
                                             {pieChart.data.map((d, i) => (
                                                 <div key={i} className="flex items-center justify-between">
