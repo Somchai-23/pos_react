@@ -53,14 +53,24 @@ export default function SalesTerminal({ currentUser, products, generateDocNo, ha
 
     // 🟢 ฟังก์ชันกลางเช็คสต็อกก่อนรับเงิน
     const validateCartStock = () => {
+        let errorItems = []; // สร้าง Array มาเก็บรายชื่อสินค้าที่สต็อกไม่พอ
+
         for (const item of cart) {
             const currentProduct = products.find(p => p.id === item.productId);
             if (!currentProduct || item.qty > (currentProduct.stock || 0)) {
-                alert(`❌ ไม่สามารถทำรายการได้!\nสินค้า "${item.name}" ในสต็อกไม่พอขาย`);
-                return false; 
+                // ถ้าไม่พอ ให้เก็บชื่อ จำนวนที่ต้องการ และสต็อกที่เหลือ ลงไปใน Array
+                errorItems.push(`- ${item.name} (ต้องการ ${item.qty}, เหลือ ${currentProduct?.stock || 0})`);
             }
         }
-        return true; 
+
+        // ถ้ามีสินค้าที่มีปัญหา (Array ไม่ว่างเปล่า)
+        if (errorItems.length > 0) {
+            // เอาข้อความมารวมกันแล้วแจ้งเตือนทีเดียว
+            alert(`❌ ไม่สามารถทำรายการได้!\nสินค้าต่อไปนี้สต็อกไม่พอขาย:\n\n${errorItems.join('\n')}\n\nกรุณาทำรายการใหม่`);
+            return false; // บล็อกการทำงาน
+        }
+
+        return true; // ถ้าผ่านหมด ให้คืนค่า true
     };
 
     // 🟢 เช็คสต็อกก่อนกดไปหน้าชำระเงิน
